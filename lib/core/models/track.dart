@@ -8,12 +8,9 @@ class Track {
   final String artworkUrl;
   final Duration? duration;
 
-  // --- Metadados privados de origem ---
-  // Nunca lidos pela UI. Só o PlaybackResolver e o SearchCoordinator
-  // têm motivo legítimo para acessar isso.
-  final String sourceId;       // ex: 'youtube', 'jamendo'
-  final String sourceTrackId;  // id interno na fonte
-  final int? bitrateKbps;      // usado só para ranking no coordinator
+  final String sourceId;
+  final String sourceTrackId;
+  final int? bitrateKbps;
 
   const Track({
     required this.id,
@@ -36,4 +33,10 @@ class Track {
         sourceTrackId: sourceTrackId,
         bitrateKbps: bitrateKbps ?? this.bitrateKbps,
       );
+
+  @override
+  bool operator ==(Object other) => other is Track && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
