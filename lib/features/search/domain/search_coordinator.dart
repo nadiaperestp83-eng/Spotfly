@@ -1,8 +1,8 @@
 import 'dart:async';
+
 import '../../../core/models/track.dart';
 import '../data/i_music_source.dart';
 
-/// Não sabe COMO cada API funciona. Só sabe agregar, ordenar e emitir.
 class SearchCoordinator {
   final List<IMusicSource> _sources;
 
@@ -23,9 +23,11 @@ class SearchCoordinator {
       source.search(query).then((tracks) {
         aggregated.addAll(tracks);
         _sortByQuality(aggregated);
-        if (!controller.isClosed) controller.add(List.unmodifiable(aggregated));
+        if (!controller.isClosed) {
+          controller.add(List.unmodifiable(aggregated));
+        }
       }).catchError((_) {
-        // fonte falhou → ignora silenciosamente, outras continuam
+        // ignora fonte que falhou
       }).whenComplete(() {
         pending--;
         if (pending == 0 && !controller.isClosed) controller.close();
