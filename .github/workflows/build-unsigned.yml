@@ -35,7 +35,8 @@ jobs:
       - name: Build APK (release, com dart-define via Secrets)
         run: |
           flutter build apk --release \
-            --dart-define=JAMENDO_CLIENT_ID=${{ secrets.JAMENDO_CLIENT_ID }}
+            --dart-define=JAMENDO_CLIENT_ID=${{ secrets.JAMENDO_CLIENT_ID }} \
+            --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
 
       - name: Upload do APK como artefato
         uses: actions/upload-artifact@v4
