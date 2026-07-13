@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/search/data/i_music_source.dart';
 import '../../features/search/data/sources/jamendo_source.dart';
 import '../../features/search/data/sources/piped_source.dart';
-import '../../features/search/data/sources/youtube_source.dart';
+import '../../features/search/data/sources/youtube_music_source.dart';
 import '../../features/search/domain/search_coordinator.dart';
 import '../audio/i_audio_player_service.dart';
 import '../audio/just_audio_player_service.dart';
@@ -18,13 +18,18 @@ final audioPlayerServiceProvider = Provider<IAudioPlayerService>((ref) {
   return service;
 });
 
+/// Lista de fontes usada pelo SearchCoordinator (Orquestrador) para o
+/// fallback automático e sequencial. A ORDEM É A PRIORIDADE:
+/// 1º YoutubeMusicSource (YT interno) -> 2º PipedSource -> 3º JamendoSource.
+/// Pra trocar a prioridade, reordenar a lista abaixo — nada mais muda
+/// (UI e notifiers não sabem que essa ordem existe).
 final musicSourcesProvider = Provider<List<IMusicSource>>((ref) {
   return [
-    YoutubeSource(),
+    YoutubeMusicSource(),
+    PipedSource(),
     JamendoSource(
       clientId: const String.fromEnvironment('JAMENDO_CLIENT_ID'),
     ),
-    PipedSource(),
   ];
 });
 
