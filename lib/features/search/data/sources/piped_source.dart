@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../../../core/models/home_section.dart';
 import '../../../../core/models/track.dart';
 import '../i_music_source.dart';
 import 'piped_instances.dart';
@@ -34,12 +35,49 @@ class PipedSource implements IMusicSource {
             title: map['title'] as String? ?? 'Sem título',
             artist: map['uploaderName'] as String? ?? 'Desconhecido',
             artworkUrl: map['thumbnail'] as String? ?? '',
-            duration: Duration(seconds: (map['duration'] as num?)?.toInt() ?? 0),
+            duration:
+                Duration(seconds: (map['duration'] as num?)?.toInt() ?? 0),
             sourceId: sourceId,
             sourceTrackId: videoId,
             bitrateKbps: 128,
           );
         }).toList();
+      } catch (_) {
+        continue;
+      }
+    }
+    return [];
+  }
+
+  @override
+  Future<List<HomeSection>> getHomeSections() async {
+    for (final instance in pipedInstances) {
+      try {
+        final uri = Uri.parse('$instance/trending')
+            .replace(queryParameters: {'region': 'US'});
+        final response = await http.get(uri).timeout(_timeout);
+        if (response.statusCode != 200) continue;
+
+        final items = jsonDecode(response.body) as List<dynamic>;
+        final tracks = items.map((item) {
+          final map = item as Map<String, dynamic>;
+          final videoId = _extractVideoId(map['url'] as String? ?? '');
+          return Track(
+            id: '${sourceId}_$videoId',
+            title: map['title'] as String? ?? 'Sem título',
+            artist: map['uploaderName'] as String? ?? 'Desconhecido',
+            artworkUrl: map['thumbnail'] as String? ?? '',
+            duration:
+                Duration(seconds: (map['duration'] as num?)?.toInt() ?? 0),
+            sourceId: sourceId,
+            sourceTrackId: videoId,
+            bitrateKbps: 128,
+          );
+        }).toList();
+
+        if (tracks.isNotEmpty) {
+          return [HomeSection(title: 'Em alta (Piped)', tracks: tracks)];
+        }
       } catch (_) {
         continue;
       }
