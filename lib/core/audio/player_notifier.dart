@@ -1,29 +1,30 @@
 import 'dart:async';
-import 'package:riverpod/riverpod.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../models/track.dart';
-import '../playback/i_playback_resolver.dart';
+import '../providers/providers.dart';
 import 'i_audio_player_service.dart';
 import 'player_state.dart';
 
 class PlayerNotifier extends Notifier<PlayerState> {
-  late final IAudioPlayerService _audioService;
-  late final IPlaybackResolver _resolver;
   StreamSubscription? _positionSub;
-  StreamSubscription? _playingSub;
   StreamSubscription? _durationSub;
+  StreamSubscription? _playingSub;
+
+  IAudioPlayerService get _audioService => ref.read(audioPlayerServiceProvider);
 
   @override
   PlayerState build() {
-    _audioService = ref.watch(audioPlayerServiceProvider);
-    _resolver = ref.watch(playbackResolverProvider);
+    final audioService = ref.watch(audioPlayerServiceProvider);
 
-    _positionSub = _audioService.positionStream.listen((pos) {
+    _positionSub = audioService.positionStream.listen((pos) {
       state = state.copyWith(position: pos);
     });
-    _durationSub = _audioService.durationStream.listen((dur) {
+    _durationSub = audioService.durationStream.listen((dur) {
       state = state.copyWith(duration: dur);
     });
-    _playingSub = _audioService.playingStream.listen((playing) {
+    _playingSub = audioService.playingStream.listen((playing) {
       state = state.copyWith(isPlaying: playing, isBuffering: false);
     });
 
@@ -37,24 +38,35 @@ class PlayerNotifier extends Notifier<PlayerState> {
   }
 
   Future<void> playTrack(Track track) async {
-    state = state.copyWith(currentTrack: track, isBuffering: true);
-    final url = await _resolver.resolve(track); // Player não sabe de onde veio
-    await _audioService.play(url);
+    state = state.copyWith(
+      currentTrack: track,
+      isBuffering: true,
+      errorMessage: null,
+    );
+    try {
+      final resolver = ref.read(playbackResolverProvider);
+      final url = await resolver.resolve(track);
+      await _audioService.play(url);
+    } catch (e) {
+      state = state.copyWith(
+        isBuffering: false,
+        errorMessage: 'Não foi possível reproduzir esta faixa.',
+      );
+    }
   }
 
   Future<void> togglePlayPause() async {
-    state.isPlaying ? await _audioService.pause() : await _audioService.resume();
+    if (state.isPlaying) {
+      await _audioService.pause();
+    } else {
+      await _audioService.resume();
+    }
   }
 
   Future<void> seek(Duration position) => _audioService.seek(position);
+
+  Future<void> setVolume(double volume) => _audioService.setVolume(volume);
 }
 
 final playerNotifierProvider =
     NotifierProvider<PlayerNotifier, PlayerState>(PlayerNotifier.new);
-
-// Declarados aqui só para o exemplo compilar isolado —
-// a definição real vive em core/providers/providers.dart
-late final audioPlayerServiceProvider =
-    Provider<IAudioPlayerService>((ref) => throw UnimplementedError());
-late final playbackResolverProvider =
-    Provider<IPlaybackResolver>((ref) => throw UnimplementedError());
