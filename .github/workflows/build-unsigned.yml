@@ -26,7 +26,6 @@ jobs:
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
-          # Usando 3.44.6 para compatibilidade com as exigências de SDK dos pacotes atuais
           flutter-version: '3.44.6' 
           channel: 'stable'
           cache: true
@@ -39,6 +38,7 @@ jobs:
           flutter build apk --release \
             --target-platform android-arm64 \
             --no-tree-shake-icons \
+            --android-skip-build-dependency-validation \
             --dart-define=JAMENDO_CLIENT_ID=${{ secrets.JAMENDO_CLIENT_ID }} \
             --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
 
