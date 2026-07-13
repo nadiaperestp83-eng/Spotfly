@@ -8,9 +8,18 @@ class Track {
   final String artworkUrl;
   final Duration? duration;
 
-  final String sourceId;
-  final String sourceTrackId;
-  final int? bitrateKbps;
+  // --- Metadados privados de origem ---
+  // Nunca lidos pela UI. Só o PlaybackResolver e o SearchCoordinator
+  // têm motivo legítimo para acessar isso.
+  final String sourceId; // ex: 'youtube', 'jamendo', 'piped'
+  final String sourceTrackId; // id interno na fonte
+  final int? bitrateKbps; // usado só para ranking no coordinator
+
+  // --- Enriquecimento (preenchido pelo MetadataService, opcional) ---
+  // Também é metadado invisível à UI de origem — a UI só lê
+  // title/artist/artworkUrl normalmente, sem saber que foram "limpos".
+  final bool isEnriched;
+  final List<String> relatedTitles; // faixas parecidas (Last.fm), uso futuro
 
   const Track({
     required this.id,
@@ -21,17 +30,29 @@ class Track {
     required this.sourceTrackId,
     this.duration,
     this.bitrateKbps,
+    this.isEnriched = false,
+    this.relatedTitles = const [],
   });
 
-  Track copyWith({int? bitrateKbps}) => Track(
+  Track copyWith({
+    String? title,
+    String? artist,
+    String? artworkUrl,
+    int? bitrateKbps,
+    bool? isEnriched,
+    List<String>? relatedTitles,
+  }) =>
+      Track(
         id: id,
-        title: title,
-        artist: artist,
-        artworkUrl: artworkUrl,
+        title: title ?? this.title,
+        artist: artist ?? this.artist,
+        artworkUrl: artworkUrl ?? this.artworkUrl,
         duration: duration,
         sourceId: sourceId,
         sourceTrackId: sourceTrackId,
         bitrateKbps: bitrateKbps ?? this.bitrateKbps,
+        isEnriched: isEnriched ?? this.isEnriched,
+        relatedTitles: relatedTitles ?? this.relatedTitles,
       );
 
   @override
