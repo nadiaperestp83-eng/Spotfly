@@ -1,74 +1,96 @@
 import 'dart:async';
 
 import '../../../core/metadata/i_metadata_provider.dart';
+import '../../../core/models/home_section.dart';
 import '../../../core/models/track.dart';
 import '../data/i_music_source.dart';
 
-/// Não sabe COMO cada API funciona (HTTP, scraping, SDK...).
-/// Só sabe: recebe uma lista de IMusicSource, dispara em paralelo,
-/// agrega por bitrate/performance, enriquece via IMetadataProvider
-/// (opcional) e emite via Stream. Não sabe que "Last.fm" existe —
-/// só conhece a interface.
+/// Orquestrador central. Não sabe COMO cada fonte funciona (HTTP,
+/// scraping, SDK...), só conhece a interface IMusicSource.
+///
+/// Estratégia: fallback automático e sequencial, na ordem definida em
+/// musicSourcesProvider (ver core/providers/providers.dart). Tenta a
+/// fonte 1; se der erro/timeout/vazio, tenta a fonte 2; e assim por
+/// diante. Retorna assim que a primeira fonte responder com resultado.
+/// A UI nunca sabe qual fonte respondeu — só recebe List<Track>.
 class SearchCoordinator {
   final List<IMusicSource> _sources;
   final IMetadataProvider? _metadataProvider;
+
+  static const _sourceTimeout = Duration(seconds: 12);
   static const _enrichTimeout = Duration(seconds: 3);
 
   SearchCoordinator(this._sources, {IMetadataProvider? metadataProvider})
       : _metadataProvider = metadataProvider;
 
-  Stream<List<Track>> search(String query) {
-    final controller = StreamController<List<Track>>();
-    final aggregated = <Track>[];
-    var pending = _sources.length;
+  Future<List<Track>> search(String query) async {
+    if (query.trim().isEmpty) return [];
 
-    if (pending == 0) {
-      controller.add([]);
-      controller.close();
-      return controller.stream;
-    }
+    Object? lastError;
+    StackTrace? lastStack;
 
     for (final source in _sources) {
-      source.search(query).then((tracks) async {
-        final enriched = await _enrichBatch(tracks);
-
-        // Remove versões antigas dos mesmos ids (evita duplicar caso
-        // dois lotes cheguem com a mesma faixa) e adiciona as novas.
-        aggregated.removeWhere((t) => enriched.any((e) => e.id == t.id));
-        aggregated.addAll(enriched);
-        _sortByQuality(aggregated);
-
-        if (!controller.isClosed) {
-          controller.add(List.unmodifiable(aggregated));
+      try {
+        final tracks = await source.search(query).timeout(_sourceTimeout);
+        if (tracks.isNotEmpty) {
+          final enriched = await _enrichBatch(tracks);
+          _sortByQuality(enriched);
+          return enriched;
         }
-      }).catchError((_) {
-        // Fonte falhou: ignora silenciosamente, as demais continuam.
-        // Usuário nunca vê "Jamendo indisponível" — é detalhe interno.
-      }).whenComplete(() {
-        pending--;
-        if (pending == 0 && !controller.isClosed) controller.close();
-      });
+        // Fonte respondeu mas não achou nada: tenta a próxima mesmo assim.
+      } catch (e, st) {
+        // Fonte falhou (rede, timeout, parsing...). Nunca propaga aqui —
+        // isso é o que evita o loop/travamento. Só guarda pra decidir
+        // depois se TODAS falharam.
+        lastError = e;
+        lastStack = st;
+        continue;
+      }
     }
 
-    return controller.stream;
+    if (lastError == null) {
+      // Todas as fontes responderam, nenhuma achou nada: resultado
+      // legítimo vazio, não é erro.
+      return [];
+    }
+
+    // Todas as fontes falharam de fato: propaga o último erro para o
+    // AsyncNotifier, que vai virar AsyncError na UI (nunca fica preso
+    // em loading).
+    Error.throwWithStackTrace(lastError, lastStack ?? StackTrace.current);
   }
 
-  /// Enriquece em paralelo, com timeout individual. Se o provider
-  /// falhar ou não estiver configurado, devolve as tracks originais —
-  /// nunca derruba a busca por causa do Last.fm estar fora do ar.
+  /// Mesma estratégia de fallback sequencial, usada pela Home.
+  Future<List<HomeSection>> getHome() async {
+    Object? lastError;
+    StackTrace? lastStack;
+
+    for (final source in _sources) {
+      try {
+        final sections = await source.getHomeSections().timeout(_sourceTimeout);
+        if (sections.isNotEmpty) return sections;
+      } catch (e, st) {
+        lastError = e;
+        lastStack = st;
+        continue;
+      }
+    }
+
+    if (lastError == null) return [];
+    Error.throwWithStackTrace(lastError, lastStack ?? StackTrace.current);
+  }
+
   Future<List<Track>> _enrichBatch(List<Track> tracks) async {
     final provider = _metadataProvider;
     if (provider == null || tracks.isEmpty) return tracks;
 
-    final results = await Future.wait(tracks.map((track) async {
+    return Future.wait(tracks.map((track) async {
       try {
         return await provider.enrich(track).timeout(_enrichTimeout);
       } catch (_) {
-        return track; // mantém a versão "crua" dessa faixa
+        return track; // mantém a versão "crua" — enriquecimento é best-effort
       }
     }));
-
-    return results;
   }
 
   void _sortByQuality(List<Track> tracks) {
