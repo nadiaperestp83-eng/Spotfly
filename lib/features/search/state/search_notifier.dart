@@ -1,6 +1,8 @@
 import 'dart:async';
-import 'package:riverpod/riverpod.dart';
-import '../domain/search_coordinator.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/providers/providers.dart';
 import 'search_state.dart';
 
 class SearchNotifier extends Notifier<SearchState> {
@@ -14,6 +16,12 @@ class SearchNotifier extends Notifier<SearchState> {
 
   void search(String query) {
     _sub?.cancel();
+
+    if (query.trim().isEmpty) {
+      state = const SearchState();
+      return;
+    }
+
     state = state.copyWith(isLoading: true, query: query, results: []);
     final coordinator = ref.read(searchCoordinatorProvider);
 
@@ -22,10 +30,12 @@ class SearchNotifier extends Notifier<SearchState> {
       onDone: () => state = state.copyWith(isLoading: false),
     );
   }
+
+  void clear() {
+    _sub?.cancel();
+    state = const SearchState();
+  }
 }
 
 final searchNotifierProvider =
     NotifierProvider<SearchNotifier, SearchState>(SearchNotifier.new);
-
-late final searchCoordinatorProvider =
-    Provider<SearchCoordinator>((ref) => throw UnimplementedError());
