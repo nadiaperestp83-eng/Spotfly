@@ -26,12 +26,13 @@ jobs:
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
-          # Downgrade para 3.22.0 para compatibilidade com pacotes legados
-          flutter-version: '3.22.0' 
+          # Usando uma versão mais recente que atende ao requisito de SDK do wakelock_plus e win32
+          flutter-version: '3.24.5' 
           channel: 'stable'
           cache: true
 
       - name: Instalar dependências
+        # O --precompile ajuda a resolver conflitos de resolução
         run: flutter pub get
 
       - name: Limpar artefatos de build
