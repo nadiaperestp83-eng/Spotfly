@@ -1,5 +1,6 @@
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
+import '../../../../core/models/home_section.dart';
 import '../../../../core/models/track.dart';
 import '../i_music_source.dart';
 
@@ -28,6 +29,15 @@ class YoutubeSource implements IMusicSource {
     } catch (_) {
       return [];
     }
+  }
+
+  @override
+  Future<List<HomeSection>> getHomeSections() async {
+    // youtube_explode_dart não expõe um feed de "home" equivalente ao
+    // usado pelo YoutubeMusicSource (que fala com a API interna do
+    // YT Music via MusicServices). Por enquanto fica fora do fallback
+    // de Home — só participa da busca.
+    return [];
   }
 
   @override
