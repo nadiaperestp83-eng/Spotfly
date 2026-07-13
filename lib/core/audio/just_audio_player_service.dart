@@ -1,4 +1,5 @@
 import 'package:just_audio/just_audio.dart';
+
 import 'i_audio_player_service.dart';
 
 class JustAudioPlayerService implements IAudioPlayerService {
@@ -11,7 +12,8 @@ class JustAudioPlayerService implements IAudioPlayerService {
   Stream<Duration?> get durationStream => _player.durationStream;
 
   @override
-  Stream<bool> get playingStream => _player.playingStream;
+  Stream<bool> get playingStream =>
+      _player.playerStateStream.map((s) => s.playing);
 
   @override
   Future<void> play(String url) async {
