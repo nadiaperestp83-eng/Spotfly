@@ -80,6 +80,9 @@ dependencies:
   url_launcher: ^6.2.1
   widget_marquee: ^0.0.8
   window_manager: ^0.4.2
+  flutter_riverpod: ^2.6.1
+  meta: ^1.15.0
+  http: ^1.2.2
   youtube_explode_dart:
     git:
       url: https://github.com/anandnet/youtube_explode_dart.git
