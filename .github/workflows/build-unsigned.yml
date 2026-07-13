@@ -26,6 +26,8 @@ jobs:
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Fixado em 3.22.x para manter compatibilidade com bibliotecas legadas
+          flutter-version: '3.22.2' 
           channel: 'stable'
           cache: true
 
@@ -35,6 +37,7 @@ jobs:
       - name: Build APK (release, com dart-define via Secrets)
         run: |
           flutter build apk --release \
+            --no-tree-shake-icons \
             --dart-define=JAMENDO_CLIENT_ID=${{ secrets.JAMENDO_CLIENT_ID }} \
             --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
 
