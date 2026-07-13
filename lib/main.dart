@@ -1,6 +1,7 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
@@ -31,7 +32,10 @@ Future<void> main() async {
   WidgetsBinding.instance.addObserver(LifecycleHandler());
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   TerminateRestart.instance.initialize();
-  runApp(const MyApp());
+  // ProviderScope só disponibiliza os providers Riverpod (search, home,
+  // player) para quem quiser lê-los futuramente. Não altera nenhuma
+  // tela: GetMaterialApp/Home continuam exatamente como estavam.
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends StatelessWidget {
