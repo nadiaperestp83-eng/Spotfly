@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+
 import '../models/track.dart';
 
 @immutable
@@ -8,6 +9,7 @@ class PlayerState {
   final bool isBuffering;
   final Duration position;
   final Duration? duration;
+  final String? errorMessage;
 
   const PlayerState({
     this.currentTrack,
@@ -15,6 +17,7 @@ class PlayerState {
     this.isBuffering = false,
     this.position = Duration.zero,
     this.duration,
+    this.errorMessage,
   });
 
   PlayerState copyWith({
@@ -23,6 +26,7 @@ class PlayerState {
     bool? isBuffering,
     Duration? position,
     Duration? duration,
+    String? errorMessage,
   }) {
     return PlayerState(
       currentTrack: currentTrack ?? this.currentTrack,
@@ -30,6 +34,7 @@ class PlayerState {
       isBuffering: isBuffering ?? this.isBuffering,
       position: position ?? this.position,
       duration: duration ?? this.duration,
+      errorMessage: errorMessage,
     );
   }
 }
