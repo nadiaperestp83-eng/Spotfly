@@ -33,6 +33,9 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
+      - name: Limpar artefatos de build
+        run: flutter clean
+
       - name: Build APK (release, otimizado para 64 bits)
         run: |
           flutter build apk --release \
