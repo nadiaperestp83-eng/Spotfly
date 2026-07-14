@@ -1,51 +1,50 @@
 // ignore_for_file: constant_identifier_names
 
 import 'dart:convert';
-import 'dart:math';
 import 'package:http/http.dart' as http;
-import 'package:get/get.dart' as getx;
-
+import '../utils/helper.dart';
 import 'constant.dart';
 
-/// Cliente para a API interna do YouTube Music (youtubei/v1).
-/// Faz requisições POST com os mesmos parâmetros que o Python ytmusicapi usa.
-class YouTubeMusicApi extends getx.GetxService {
-  final http.Client _client = http.Client();
+class YouTubeMusicApi {
+  final Map<String, String> _headers = {
+    'user-agent': userAgent,
+    'accept': '*/*',
+    'accept-encoding': 'gzip, deflate',
+    'content-type': 'application/json',
+    'content-encoding': 'gzip',
+    'origin': domain,
+    'cookie': 'CONSENT=YES+1',
+  };
 
-  // ============================================================
-  //  MÉTODO PRIVADO PARA REQUISIÇÕES
-  // ============================================================
-  Future<Map<String, dynamic>> _post(String endpoint,
-      {Map<String, dynamic>? data, Map<String, String>? additionalHeaders}) async {
+  final Map<String, dynamic> _context = {
+    'context': {
+      'client': {
+        "clientName": "WEB_REMIX",
+        "clientVersion": "1.20230213.01.00",
+      },
+      'user': {}
+    }
+  };
+
+  set hlCode(String code) {
+    _context['context']['client']['hl'] = code;
+  }
+
+  Future<Map<String, dynamic>> _post(String endpoint, Map<String, dynamic> data) async {
     try {
-      final url = Uri.parse('$baseUrl$endpoint$fixedParms');
-
-      final headers = {
-        'User-Agent': userAgent,
-        'Content-Type': 'application/json',
-        'Accept': '*/*',
-        'Accept-Encoding': 'gzip, deflate',
-        'Origin': domain,
-      };
-      if (additionalHeaders != null) headers.addAll(additionalHeaders);
-
-      // Dados base: inclui contexto do cliente
-      final Map<String, dynamic> requestData = {
-        ..._buildContext(),
-        ...?data,
-      };
-
-      printINFO("📡 POST $endpoint");
-      final response = await _client
-          .post(url, headers: headers, body: jsonEncode(requestData))
-          .timeout(const Duration(seconds: 15));
+      final uri = Uri.parse('$baseUrl$endpoint$fixedParms');
+      printINFO("📡 POST $uri");
+      final response = await http.post(
+        uri,
+        headers: _headers,
+        body: jsonEncode(data),
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
         printINFO("✅ $endpoint OK");
-        return decoded;
+        return jsonDecode(response.body);
       } else {
-        throw Exception("HTTP ${response.statusCode}: ${response.body}");
+        throw NetworkError("Erro ${response.statusCode}: ${response.body}");
       }
     } catch (e) {
       printERROR("❌ Erro no POST $endpoint: $e");
@@ -54,113 +53,65 @@ class YouTubeMusicApi extends getx.GetxService {
   }
 
   // ============================================================
-  //  CONTEXTO DO CLIENTE (mesmo do ytmusicapi)
+  //  SEARCH
   // ============================================================
-  Map<String, dynamic> _buildContext() {
-    return {
-      'context': {
-        'client': {
-          'clientName': 'WEB_REMIX',
-          'clientVersion': '1.20230213.01.00',
-          'hl': 'en',
-        },
-        'user': {},
-      }
-    };
-  }
-
-  // ============================================================
-  //  MÉTODOS PÚBLICOS
-  // ============================================================
-
-  // ------------------------------------------------------------------
-  // 1. SEARCH
-  // ------------------------------------------------------------------
   Future<Map<String, dynamic>> search(String query, {int limit = 30}) async {
-    final data = {
-      'query': query,
-      'limit': limit,
-      'params': getSearchParams(null, null, false), // padrão
-    };
-    return await _post('search', data: data);
-  }
+    final data = Map.from(_context);
+    data['context']['client']["hl"] = 'en';
+    data['query'] = query;
+    data['params'] = 'EgWKAQIIAWoKEAoQCRADEAA%3D'; // busca geral
 
-  // ------------------------------------------------------------------
-  // 2. BROWSE (Home, Charts, Artist, Album, Playlist)
-  // ------------------------------------------------------------------
-  Future<Map<String, dynamic>> browse(String browseId,
-      {String? params, Map<String, dynamic>? additionalData}) async {
-    final data = {
-      'browseId': browseId,
-      ...?additionalData,
-    };
-    if (params != null) data['params'] = params;
-    return await _post('browse', data: data);
-  }
-
-  // ------------------------------------------------------------------
-  // 3. NEXT (Watch Playlist / Related)
-  // ------------------------------------------------------------------
-  Future<Map<String, dynamic>> next(String videoId,
-      {String? playlistId, bool isAudioOnly = true}) async {
-    final data = {
-      'videoId': videoId,
-      'playlistId': playlistId,
-      'enablePersistentPlaylistPanel': true,
-      'isAudioOnly': isAudioOnly,
-    };
-    return await _post('next', data: data);
-  }
-
-  // ------------------------------------------------------------------
-  // 4. PLAYER (para obter URL de áudio, se necessário)
-  //    Mas já temos stream_service.dart para isso.
-  // ------------------------------------------------------------------
-  Future<Map<String, dynamic>> player(String videoId) async {
-    final data = {
-      'videoId': videoId,
-      'playbackContext': {
-        'contentPlaybackContext': {
-          'signatureTimestamp': getDatestamp() - 1,
-        },
-      },
-    };
-    return await _post('player', data: data);
+    final response = await _post('search', data);
+    return response;
   }
 
   // ============================================================
-  //  UTILITÁRIOS
+  //  BROWSE (para artistas, playlists, álbuns, charts, etc.)
   // ============================================================
-  String getSearchParams(String? filter, String? scope, bool ignoreSpelling) {
-    // Implementação simplificada – você pode expandir conforme necessário
-    // Baseado no código original que você tinha
-    if (filter != null) {
-      switch (filter.toLowerCase()) {
-        case 'songs':
-          return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
-        case 'videos':
-          return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
-        case 'albums':
-          return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
-        case 'artists':
-          return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
-        case 'playlists':
-          return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
-        default:
-          return '';
-      }
+  Future<Map<String, dynamic>> browse(String browseId, {Map<String, dynamic>? params}) async {
+    final data = Map.from(_context);
+    data['browseId'] = browseId;
+    if (params != null) {
+      data.addAll(params);
     }
-    return '';
+    final response = await _post('browse', data);
+    return response;
   }
 
-  int getDatestamp() {
-    // Retorna timestamp atual em segundos (simplificado)
-    return DateTime.now().millisecondsSinceEpoch ~/ 1000;
+  // ============================================================
+  //  NEXT (para playlist de reprodução / watch playlist)
+  // ============================================================
+  Future<Map<String, dynamic>> next({
+    required String videoId,
+    String? playlistId,
+    bool radio = false,
+    bool shuffle = false,
+  }) async {
+    final data = Map.from(_context);
+    data['enablePersistentPlaylistPanel'] = true;
+    data['isAudioOnly'] = true;
+    data['tunerSettingValue'] = 'AUTOMIX_SETTING_NORMAL';
+    data['videoId'] = videoId;
+    if (playlistId != null) {
+      data['playlistId'] = playlistId;
+    }
+    if (shuffle) {
+      data['params'] = "wAEB8gECKAE%3D";
+    }
+    if (radio) {
+      data['params'] = "wAEB";
+    }
+    final response = await _post('next', data);
+    return response;
   }
 
-  @override
-  void onClose() {
-    _client.close();
-    super.onClose();
+  // ============================================================
+  //  PLAYER (para obter URL de áudio) - se necessário
+  // ============================================================
+  Future<Map<String, dynamic>> player(String videoId) async {
+    final data = Map.from(_context);
+    data['videoId'] = videoId;
+    final response = await _post('player', data);
+    return response;
   }
 }
