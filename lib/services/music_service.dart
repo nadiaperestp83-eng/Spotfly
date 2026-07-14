@@ -680,9 +680,24 @@ class MusicServices extends getx.GetxService {
             ['artist', 'playlist', 'song', 'video', 'station'], type, category);
         if (filter == null) {
           for (var item in mixedItems) {
-            final itemType = item.runtimeType == MediaItem
-                ? (item.artist.split(",")[0]) + "s"
-                : "${item.runtimeType}s";
+            String itemType;
+            if (item.runtimeType == MediaItem) {
+              // Usa o resultType real ('song'/'video') preservado em extras,
+              // em vez do nome do artista (bug antigo: agrupava por artista
+              // e nunca gerava as chaves 'Songs'/'Videos').
+              final resultType =
+                  (item as MediaItem).extras?['resultType'] as String?;
+              if (resultType == 'video') {
+                itemType = 'Videos';
+              } else if (resultType == 'song') {
+                itemType = 'Songs';
+              } else {
+                // Fallback defensivo caso resultType não tenha vindo no JSON.
+                itemType = 'Songs';
+              }
+            } else {
+              itemType = "${item.runtimeType}s";
+            }
             if (searchResults.containsKey(itemType) &&
                 (searchResults[itemType]).length < 3) {
               (searchResults[itemType] as List).add(item);
