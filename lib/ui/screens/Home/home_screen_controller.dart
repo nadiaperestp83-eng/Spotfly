@@ -174,9 +174,22 @@ class HomeScreenController extends GetxController {
       if (quickPicks.value.songList.isEmpty) {
         final index = homeContentListMap
             .indexWhere((element) => element['title'] == "Quick picks");
-        final con = homeContentListMap.removeAt(index);
-        quickPicks.value = QuickPicks(List<MediaItem>.from(con["contents"]),
-            title: "Quick picks");
+        if (index != -1) {
+          final con = homeContentListMap.removeAt(index);
+          quickPicks.value = QuickPicks(List<MediaItem>.from(con["contents"]),
+              title: "Quick picks");
+        } else if (homeContentListMap.isNotEmpty) {
+          // Antes: removeAt(index) era chamado sem checar se index == -1.
+          // Fontes de fallback (Piped/Jamendo) não nomeiam o conteúdo
+          // "Quick picks" — o Piped usa "Em alta (Piped)", por exemplo —
+          // então indexWhere nunca achava e removeAt(-1) explodia com
+          // RangeError. Como essas fontes só devolvem UMA entrada de
+          // conteúdo pra Home, usamos essa entrada diretamente, com
+          // qualquer título que ela já tenha.
+          final con = homeContentListMap.removeAt(0);
+          quickPicks.value = QuickPicks(List<MediaItem>.from(con["contents"]),
+              title: con["title"] ?? "Quick picks");
+        }
       }
 
       middleContent.value = _setContentList(middleContentTemp);
