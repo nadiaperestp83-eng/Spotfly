@@ -67,7 +67,7 @@ dependencies:
     git:
       url: https://github.com/anandnet/youtube_explode_dart.git
       ref: 1d9ec9baa806705b1d859260eeb389ec28c6b024
-  yt_flutter_musicapi: ^3.4.4  # <-- ADICIONADO
+  # yt_flutter_musicapi: ^3.4.4   # <-- REMOVIDO
 
 dev_dependencies:
   flutter_lints: ^4.0.0
