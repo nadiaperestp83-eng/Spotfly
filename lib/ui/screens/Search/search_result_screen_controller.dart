@@ -25,7 +25,7 @@ class SearchResultScreenController extends GetxController
   bool isTabTransitionReversed = false;
   final Map<String, ScrollController> scrollControllers = {};
 
-  // 🔥 MAPEAMENTO DE CHAVES: nomes alternativos → nomes padrão da UI
+  // 🔥 MAPEAMENTO DE CHAVES: converte nomes alternativos para os padrões da UI
   static const Map<String, String> keyMapping = {
     'Tracks': 'Songs',
     'Songs': 'Songs',
@@ -67,7 +67,6 @@ class SearchResultScreenController extends GetxController
 
       try {
         if (filterParams == null) {
-          // Fallback: usa os dados já carregados na busca inicial
           separatedResultContent[tabName] =
               List.from(resultContent[tabName] ?? []);
           additionalParamNext[tabName] = {};
@@ -165,7 +164,7 @@ class SearchResultScreenController extends GetxController
         .read(searchNotifierProvider.notifier)
         .search(args);
 
-    // Log para diagnóstico
+    // 🔍 Log para diagnóstico (você verá as chaves originais)
     printINFO("🔍 Chaves originais: ${result.categories.keys}");
     printINFO("📦 Conteúdo: ${result.categories}");
 
