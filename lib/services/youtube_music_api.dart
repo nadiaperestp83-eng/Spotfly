@@ -1,8 +1,6 @@
-// ignore_for_file: constant_identifier_names
-
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../utils/helper.dart';
+import '../utils/helper.dart'; // <-- importa printINFO e printERROR
 import 'constant.dart';
 
 class YouTubeMusicApi {
@@ -21,30 +19,27 @@ class YouTubeMusicApi {
       'client': {
         "clientName": "WEB_REMIX",
         "clientVersion": "1.20230213.01.00",
+        "hl": "en",
       },
       'user': {}
     }
   };
 
-  set hlCode(String code) {
-    _context['context']['client']['hl'] = code;
-  }
-
   Future<Map<String, dynamic>> _post(String endpoint, Map<String, dynamic> data) async {
+    final url = Uri.parse('$baseUrl$endpoint$fixedParms');
     try {
-      final uri = Uri.parse('$baseUrl$endpoint$fixedParms');
-      printINFO("📡 POST $uri");
+      printINFO("📡 POST $url");
       final response = await http.post(
-        uri,
+        url,
         headers: _headers,
         body: jsonEncode(data),
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         printINFO("✅ $endpoint OK");
-        return jsonDecode(response.body);
+        return jsonDecode(response.body) as Map<String, dynamic>;
       } else {
-        throw NetworkError("Erro ${response.statusCode}: ${response.body}");
+        throw Exception("Erro ${response.statusCode}: ${response.body}");
       }
     } catch (e) {
       printERROR("❌ Erro no POST $endpoint: $e");
@@ -53,65 +48,59 @@ class YouTubeMusicApi {
   }
 
   // ============================================================
-  //  SEARCH
+  //  MÉTODOS PÚBLICOS
   // ============================================================
-  Future<Map<String, dynamic>> search(String query, {int limit = 30}) async {
-    final data = Map.from(_context);
-    data['context']['client']["hl"] = 'en';
-    data['query'] = query;
-    data['params'] = 'EgWKAQIIAWoKEAoQCRADEAA%3D'; // busca geral
 
+  Future<Map<String, dynamic>> search(String query, {int limit = 30}) async {
+    final Map<String, dynamic> data = Map.from(_context);
+    data['query'] = query;
+    // Parâmetro de filtro para músicas (songs)
+    data['params'] = 'EgWKAQIIAWoKEAoQCRADEAA%3D'; 
     final response = await _post('search', data);
     return response;
   }
 
-  // ============================================================
-  //  BROWSE (para artistas, playlists, álbuns, charts, etc.)
-  // ============================================================
-  Future<Map<String, dynamic>> browse(String browseId, {Map<String, dynamic>? params}) async {
-    final data = Map.from(_context);
-    data['browseId'] = browseId;
-    if (params != null) {
-      data.addAll(params);
-    }
-    final response = await _post('browse', data);
-    return response;
+  Future<Map<String, dynamic>> getHome() async {
+    final Map<String, dynamic> data = Map.from(_context);
+    data['browseId'] = 'FEmusic_home';
+    return await _post('browse', data);
   }
 
-  // ============================================================
-  //  NEXT (para playlist de reprodução / watch playlist)
-  // ============================================================
-  Future<Map<String, dynamic>> next({
-    required String videoId,
-    String? playlistId,
-    bool radio = false,
-    bool shuffle = false,
-  }) async {
-    final data = Map.from(_context);
+  Future<Map<String, dynamic>> getSong(String videoId) async {
+    final Map<String, dynamic> data = Map.from(_context);
+    data['videoId'] = videoId;
+    data['playbackContext'] = {
+      'contentPlaybackContext': {
+        'signatureTimestamp': 1,
+      }
+    };
+    return await _post('player', data);
+  }
+
+  Future<Map<String, dynamic>> getPlaylist(String playlistId) async {
+    final Map<String, dynamic> data = Map.from(_context);
+    data['browseId'] = 'VL$playlistId';
+    return await _post('browse', data);
+  }
+
+  Future<Map<String, dynamic>> getAlbum(String albumId) async {
+    final Map<String, dynamic> data = Map.from(_context);
+    data['browseId'] = albumId;
+    return await _post('browse', data);
+  }
+
+  Future<Map<String, dynamic>> getArtist(String artistId) async {
+    final Map<String, dynamic> data = Map.from(_context);
+    data['browseId'] = artistId;
+    return await _post('browse', data);
+  }
+
+  Future<Map<String, dynamic>> getWatchPlaylist(String videoId) async {
+    final Map<String, dynamic> data = Map.from(_context);
+    data['videoId'] = videoId;
+    data['playlistId'] = 'RDAMVM$videoId';
     data['enablePersistentPlaylistPanel'] = true;
     data['isAudioOnly'] = true;
-    data['tunerSettingValue'] = 'AUTOMIX_SETTING_NORMAL';
-    data['videoId'] = videoId;
-    if (playlistId != null) {
-      data['playlistId'] = playlistId;
-    }
-    if (shuffle) {
-      data['params'] = "wAEB8gECKAE%3D";
-    }
-    if (radio) {
-      data['params'] = "wAEB";
-    }
-    final response = await _post('next', data);
-    return response;
-  }
-
-  // ============================================================
-  //  PLAYER (para obter URL de áudio) - se necessário
-  // ============================================================
-  Future<Map<String, dynamic>> player(String videoId) async {
-    final data = Map.from(_context);
-    data['videoId'] = videoId;
-    final response = await _post('player', data);
-    return response;
+    return await _post('next', data);
   }
 }
