@@ -43,7 +43,11 @@ class HomeNotifier extends AsyncNotifier<List<dynamic>> {
           result.error!, result.stackTrace ?? StackTrace.current);
     }
 
-    return result.value;
+    // Nesse ponto já garantimos acima (throw) que não há erro, então só
+    // sobra o caso de sucesso — mas o tipo de `.value` no Riverpod é
+    // sempre `T?` (nullable), daí o `!` pra bater com o retorno
+    // `Future<List<dynamic>>` (não nullable) do método.
+    return result.value!;
   }
 
   /// Camada de abstração do Orquestrador para os Charts (Trending + Top
