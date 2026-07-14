@@ -23,15 +23,15 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Configurar Python (para Chaquopy)
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Instalar dependências Python (ytmusicapi)
-        run: |
-          python -m pip install --upgrade pip
-          pip install ytmusicapi yt-dlp
+      # 🚫 REMOVA ESTE BLOCO (Python e Chaquopy)
+      # - name: Configurar Python (para Chaquopy)
+      #   uses: actions/setup-python@v5
+      #   with:
+      #     python-version: '3.11'
+      # - name: Instalar dependências Python
+      #   run: |
+      #     python -m pip install --upgrade pip
+      #     pip install ytmusicapi yt-dlp
 
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
@@ -45,14 +45,6 @@ jobs:
 
       - name: Limpar artefatos de build
         run: flutter clean
-
-      - name: Corrigir buildPython do pacote yt_flutter_musicapi (bug do pacote: caminho Windows hardcoded)
-        run: |
-          GRADLE_FILE=$(find "$HOME/.pub-cache/hosted/pub.dev" -maxdepth 1 -iname "yt_flutter_musicapi-*" -type d | head -n1)/android/build.gradle
-          echo "Arquivo encontrado: $GRADLE_FILE"
-          sed -i 's#buildPython("C:/Python311/python.exe")#buildPython("python3")#' "$GRADLE_FILE"
-          echo "Linha corrigida:"
-          grep -n "buildPython" "$GRADLE_FILE"
 
       - name: Build APK (release, otimizado para 64 bits)
         run: |
