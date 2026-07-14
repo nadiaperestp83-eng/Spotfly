@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '/models/album.dart';
+import '../../core/audio/player_notifier.dart';
+import '../../core/riverpod/app_provider_container.dart';
+import '../../features/search/data/track_media_item_mapper.dart';
 import '../../models/artist.dart';
 import '../../models/playling_from.dart';
 import '../../models/playlist.dart';
@@ -96,6 +99,24 @@ class ListWidget extends StatelessWidget with RemoveSongFromPlaylistMixin {
       itemBuilder: (context, index) => SongListTile(
         song: items[index] as MediaItem,
         onTap: () {
+          final mediaItem = items[index] as MediaItem;
+
+          // Itens vindos das fontes de fallback (Piped/Jamendo) trazem
+          // isFallbackSource:true nos extras (ver track_media_item_mapper.dart).
+          // Esses NÃO passam pelo AudioHandler/videoId legado: tocam direto
+          // via PlayerNotifier (Riverpod), que já resolve a URL certa com o
+          // PlaybackResolver (YT -> Piped -> Jamendo). Itens reais do
+          // YouTube continuam no pipeline antigo (GetX/AudioHandler), pois
+          // é ele quem sustenta fila, rádio, download, lockscreen e
+          // notificação — o PlaybackResolver não cobre esse caso.
+          final fallbackTrack = mediaItem.toTrackIfFallback();
+          if (fallbackTrack != null) {
+            appProviderContainer
+                .read(playerNotifierProvider.notifier)
+                .playTrack(fallbackTrack);
+            return;
+          }
+
           isArtistSongs
               // if song is from artist then play from artist
               ? playerController.playPlayListSong(
@@ -112,7 +133,7 @@ class ListWidget extends StatelessWidget with RemoveSongFromPlaylistMixin {
                         type: PlaylingFromType.PLAYLIST,
                         name: playlist.title,
                       ))
-                  : playerController.pushSongToQueue(items[index] as MediaItem);
+                  : playerController.pushSongToQueue(mediaItem);
         },
       ),
     );
