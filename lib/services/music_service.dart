@@ -1,17 +1,12 @@
 // ignore_for_file: constant_identifier_names
 
-import 'dart:convert';
 import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:get/get.dart' as getx;
 import 'package:hive/hive.dart';
 
 import '/models/album.dart';
-import '/services/utils.dart';
 import '../utils/helper.dart';
-import 'constant.dart';
-import 'continuations.dart';
-import 'nav_parser.dart';
 
 // ============================================================
 //  DEFINIÇÃO DA EXCEÇÃO NetworkError
@@ -29,896 +24,337 @@ enum AudioQuality {
 }
 
 class MusicServices extends getx.GetxService {
-  final Map<String, String> _headers = {
-    'user-agent': userAgent,
-    'accept': '*/*',
-    'accept-encoding': 'gzip, deflate',
-    'content-type': 'application/json',
-    'content-encoding': 'gzip',
-    'origin': domain,
-    'cookie': 'CONSENT=YES+1',
-  };
+  // ============================================================
+  //  CONFIGURAÇÃO DO PROXY
+  // ============================================================
+  // ⚠️ ALTERE ESTA URL PARA A DO SEU SERVIDOR PROXY
+  static const String _proxyBaseUrl =
+      'https://meu-api-proxy-music-production.up.railway.app';
 
-  final Map<String, dynamic> _context = {
-    'context': {
-      'client': {
-        "clientName": "WEB_REMIX",
-        "clientVersion": "1.20230213.01.00",
+  final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: _proxyBaseUrl,
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
-      'user': {}
-    }
-  };
+    ),
+  );
 
+  // ============================================================
+  //  MÉTODOS DE INICIALIZAÇÃO (simplificados)
+  // ============================================================
   @override
   void onInit() {
-    init();
     super.onInit();
-  }
-
-  final dio = Dio();
-
-  Future<void> init() async {
-    final date = DateTime.now();
-    _context['context']['client']['clientVersion'] =
-        "1.${date.year}${date.month.toString().padLeft(2, '0')}${date.day.toString().padLeft(2, '0')}.01.00";
-    final signatureTimestamp = getDatestamp() - 1;
-    _context['playbackContext'] = {
-      'contentPlaybackContext': {'signatureTimestamp': signatureTimestamp},
-    };
-
-    final appPrefsBox = Hive.box('AppPrefs');
-    hlCode = appPrefsBox.get('contentLanguage') ?? "en";
-    if (appPrefsBox.containsKey('visitorId')) {
-      final visitorData = appPrefsBox.get("visitorId");
-      if (visitorData != null && !isExpired(epoch: visitorData['exp'])) {
-        _headers['X-Goog-Visitor-Id'] = visitorData['id'];
-        appPrefsBox.put("visitorId", {
-          'id': visitorData['id'],
-          'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 2590200
-        });
-        printINFO("Got Visitor id (${visitorData['id']}) from Box");
-        return;
-      }
-    }
-
-    final visitorId = await genrateVisitorId();
-    if (visitorId != null) {
-      _headers['X-Goog-Visitor-Id'] = visitorId;
-      printINFO("New Visitor id generated ($visitorId)");
-      appPrefsBox.put("visitorId", {
-        'id': visitorId,
-        'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 2592000
-      });
-      return;
-    }
-    _headers['X-Goog-Visitor-Id'] =
-        visitorId ?? "CgttN24wcmd5UzNSWSi2lvq2BjIKCgJKUBIEGgAgYQ%3D%3D";
+    // Não precisamos mais de visitorId, headers manuais, etc.
+    printINFO("🎵 MusicServices usando proxy em: $_proxyBaseUrl");
   }
 
   set hlCode(String code) {
-    _context['context']['client']['hl'] = code;
+    // O proxy pode ignorar ou usar isso se quiser, mas por enquanto não faz nada
+    printINFO("hlCode set to: $code (ignorado pelo proxy)");
   }
 
-  Future<String?> genrateVisitorId() async {
+  // ============================================================
+  //  MÉTODO PRIVADO PARA REQUISIÇÕES (substitui _sendRequest)
+  // ============================================================
+  Future<dynamic> _get(String endpoint, {Map<String, dynamic>? queryParams}) async {
     try {
-      final response =
-          await dio.get(domain, options: Options(headers: _headers));
-      final reg = RegExp(r'ytcfg\.set\s*\(\s*({.+?})\s*\)\s*;');
-      final matches = reg.firstMatch(response.data.toString());
-      String? visitorId;
-      if (matches != null) {
-        final ytcfg = json.decode(matches.group(1).toString());
-        visitorId = ytcfg['VISITOR_DATA']?.toString();
-      }
-      return visitorId;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  Future<Response> _sendRequest(String action, Map<dynamic, dynamic> data,
-      {additionalParams = "", int retryCount = 0}) async {
-    const maxRetries = 3;
-    try {
-      final response = await dio
-          .post("$baseUrl$action$fixedParms$additionalParams",
-              options: Options(
-                headers: _headers,
-              ),
-              data: data)
-          .timeout(const Duration(seconds: 15));
-
+      final response = await _dio.get(
+        endpoint,
+        queryParameters: queryParams,
+      );
       if (response.statusCode == 200) {
-        return response;
+        return response.data;
+      } else {
+        throw NetworkError("Erro ${response.statusCode}: ${response.statusMessage}");
       }
-
-      if (retryCount >= maxRetries) {
-        printINFO("Max retries atingido para $action (status ${response.statusCode})");
-        throw NetworkError();
-      }
-
-      await Future.delayed(Duration(milliseconds: 500 * (retryCount + 1)));
-      return _sendRequest(action, data,
-          additionalParams: additionalParams, retryCount: retryCount + 1);
     } on DioException catch (e) {
-      printINFO("Error $e");
-      throw NetworkError();
-    }
-  }
-
-  Future<dynamic> getHome({int limit = 4}) async {
-    final data = Map.from(_context);
-    data["browseId"] = "FEmusic_home";
-    final response = await _sendRequest("browse", data);
-    final results = nav(response.data, single_column_tab + section_list);
-    final home = [...parseMixedContent(results)];
-
-    final sectionList =
-        nav(response.data, single_column_tab + ['sectionListRenderer']);
-    if (sectionList.containsKey('continuations')) {
-      requestFunc(additionalParams) async {
-        return (await _sendRequest("browse", data,
-                additionalParams: additionalParams))
-            .data;
-      }
-
-      parseFunc(contents) => parseMixedContent(contents);
-      final x = (await getContinuations(sectionList, 'sectionListContinuation',
-          limit - home.length, requestFunc, parseFunc));
-      home.addAll([...x]);
-    }
-
-    return home;
-  }
-
-  Future<List<Map<String, dynamic>>> getCharts(String catogory,
-      {String? countryCode}) async {
-    final List<Map<String, dynamic>> charts = [];
-    final data = Map.from(_context);
-
-    data['browseId'] = 'FEmusic_charts';
-    data['context']['client']["hl"] = 'en';
-    if (countryCode != null) {
-      data['formData'] = {
-        'selectedValues': [countryCode]
-      };
-    }
-    final response = (await _sendRequest('browse', data)).data;
-    final results = nav(response, single_column_tab + section_list);
-    results.removeAt(0);
-    for (dynamic result in results) {
-      if (nav(result, [
-            "musicCarouselShelfRenderer",
-            "header",
-            "musicCarouselShelfBasicHeaderRenderer",
-            ...title_text
-          ]) ==
-          "Video charts") {
-        for (dynamic item in result['musicCarouselShelfRenderer']['contents']) {
-          final chartItem =
-              await getChartItems(parseChartsItemBrowseId(item), catogory);
-          charts.add(chartItem);
-        }
-      } else {
-        continue;
-      }
-    }
-
-    return charts;
-  }
-
-  Future<Map<String, dynamic>> getChartItems(
-      Map<String, dynamic> item, String catogory) async {
-    final catString = catogory == "TMV" ? "Top Music Videos" : "Trending";
-    if ((item['title'])!.contains(catString)) {
-      final songs = (await getPlaylistOrAlbumSongs(
-          playlistId: item['browseId']))['tracks'];
-      final limitedSongs = songs.length > 24 ? songs.sublist(0, 24) : songs;
-      return {'title': item['title'], 'contents': limitedSongs};
-    }
-    return {'title': item['title'], 'contents': []};
-  }
-
-  Future<Map<String, dynamic>> getWatchPlaylist(
-      {String videoId = "",
-      String? playlistId,
-      int limit = 25,
-      bool radio = false,
-      bool shuffle = false,
-      String? additionalParamsNext,
-      bool onlyRelated = false}) async {
-    if (videoId.isNotEmpty && videoId.substring(0, 4) == "MPED") {
-      videoId = videoId.substring(4);
-    }
-    final data = Map.from(_context);
-    data['enablePersistentPlaylistPanel'] = true;
-    data['isAudioOnly'] = true;
-    data['tunerSettingValue'] = 'AUTOMIX_SETTING_NORMAL';
-    if (videoId == "" && playlistId == null) {
-      throw Exception(
-          "You must provide either a video id, a playlist id, or both");
-    }
-    if (videoId != "") {
-      data['videoId'] = videoId;
-      playlistId ??= "RDAMVM$videoId";
-
-      if (!(radio || shuffle)) {
-        data['watchEndpointMusicSupportedConfigs'] = {
-          'watchEndpointMusicConfig': {
-            'hasPersistentPlaylistPanel': true,
-            'musicVideoType': "MUSIC_VIDEO_TYPE_ATV",
-          }
-        };
-      }
-    }
-
-    playlistId = validatePlaylistId(playlistId!);
-    data['playlistId'] = playlistId;
-    final isPlaylist =
-        playlistId.startsWith('PL') || playlistId.startsWith('OLA');
-    if (shuffle) {
-      data['params'] = "wAEB8gECKAE%3D";
-    }
-    if (radio) {
-      data['params'] = "wAEB";
-    }
-
-    final List<dynamic> tracks = [];
-    dynamic lyricsBrowseId, relatedBrowseId, playlist;
-    final results = {};
-
-    if (additionalParamsNext == null) {
-      final response = (await _sendRequest("next", data)).data;
-      final watchNextRenderer = nav(response, [
-        'contents',
-        'singleColumnMusicWatchNextResultsRenderer',
-        'tabbedRenderer',
-        'watchNextTabbedResultsRenderer'
-      ]);
-
-      lyricsBrowseId = getTabBrowseId(watchNextRenderer, 1);
-      relatedBrowseId = getTabBrowseId(watchNextRenderer, 2);
-      if (onlyRelated) {
-        return {
-          'lyrics': lyricsBrowseId,
-          'related': relatedBrowseId,
-        };
-      }
-
-      results.addAll(nav(watchNextRenderer, [
-        ...tab_content,
-        'musicQueueRenderer',
-        'content',
-        'playlistPanelRenderer'
-      ]));
-      playlist = results['contents']
-          .map((content) => nav(content,
-              ['playlistPanelVideoRenderer', ...navigation_playlist_id]))
-          .where((e) => e != null)
-          .toList()
-          .first;
-      tracks.addAll(parseWatchPlaylist(results['contents']));
-    }
-
-    dynamic additionalParamsForNext;
-    if (results.containsKey('continuations') || additionalParamsNext != null) {
-      requestFunc(additionalParams) async =>
-          (await _sendRequest("next", data, additionalParams: additionalParams))
-              .data;
-      parseFunc(contents) => parseWatchPlaylist(contents);
-      final x = await getContinuations(results, 'playlistPanelContinuation',
-          limit - tracks.length, requestFunc, parseFunc,
-          ctokenPath: isPlaylist ? '' : 'Radio',
-          isAdditionparamReturnReq: true,
-          additionalParams_: additionalParamsNext);
-      additionalParamsForNext = x[1];
-      tracks.addAll(List<dynamic>.from(x[0]));
-    }
-
-    return {
-      'tracks': tracks,
-      'playlistId': playlist,
-      'lyrics': lyricsBrowseId,
-      'related': relatedBrowseId,
-      'additionalParamsForNext': additionalParamsForNext
-    };
-  }
-
-  Future<String> getAlbumBrowseId(String audioPlaylistId) async {
-    final response = await dio.get("${domain}playlist",
-        options: Options(headers: _headers),
-        queryParameters: {"list": audioPlaylistId});
-    final reg = RegExp(r'\"MPRE.+?\"');
-    final matchs = reg.firstMatch(response.data.toString());
-    if (matchs != null) {
-      final x = (matchs[0])!;
-      final res = (x.substring(1)).split("\\")[0];
-      return res;
-    }
-    return audioPlaylistId;
-  }
-
-  dynamic getContentRelatedToSong(String videoId, String hlCode) async {
-    final params = await getWatchPlaylist(videoId: videoId, onlyRelated: true);
-    final data = Map.from(_context);
-    data['browseId'] = params['related'];
-    data['context']['client']['hl'] = hlCode;
-    final response = (await _sendRequest('browse', data)).data;
-    final sections = nav(response, ['contents'] + section_list);
-    final x = parseMixedContent(sections);
-    return x;
-  }
-
-  dynamic getLyrics(String browseId) async {
-    final data = Map.from(_context);
-    data['browseId'] = browseId;
-    final response = (await _sendRequest('browse', data)).data;
-    return nav(
-      response,
-      ['contents', ...section_list_item, ...description_shelf, ...description],
-    );
-  }
-
-  Future<Map<String, dynamic>> getPlaylistOrAlbumSongs(
-      {String? playlistId,
-      String? albumId,
-      int limit = 3000,
-      bool related = false,
-      int suggestionsLimit = 0}) async {
-    String browseId = playlistId != null
-        ? (playlistId.startsWith("VL") ? playlistId : "VL$playlistId")
-        : albumId!;
-    if (albumId != null && albumId.contains("OLAK5uy")) {
-      browseId = await getAlbumBrowseId(browseId);
-    }
-    final data = Map.from(_context);
-    data['browseId'] = browseId;
-    final Map<String, dynamic> response =
-        (await _sendRequest('browse', data)).data;
-    if (playlistId != null) {
-      final Map<String, dynamic> header =
-          nav(response, ['header', "musicDetailHeaderRenderer"]) ??
-              nav(response, [
-                'contents',
-                "twoColumnBrowseResultsRenderer",
-                'tabs',
-                0,
-                "tabRenderer",
-                "content",
-                "sectionListRenderer",
-                "contents",
-                0,
-                "musicResponsiveHeaderRenderer"
-              ]);
-
-      final Map<String, dynamic> results =
-          nav(response, musicPlaylistShelfRenderer) ??
-              nav(
-                response,
-                [
-                  'contents',
-                  "singleColumnBrowseResultsRenderer",
-                  "tabs",
-                  0,
-                  "tabRenderer",
-                  "content",
-                  'sectionListRenderer',
-                  'contents',
-                  0,
-                  "musicPlaylistShelfRenderer"
-                ],
-              );
-      final Map<String, dynamic> playlist = {'id': results['playlistId']};
-
-      playlist['title'] = nav(header, title_text);
-      playlist['thumbnails'] = nav(header, thumnail_cropped) ??
-          nav(header, [
-            "thumbnail",
-            "musicThumbnailRenderer",
-            "thumbnail",
-            "thumbnails"
-          ]);
-      playlist["description"] = nav(header, description);
-      final int runCount = header['subtitle']['runs'].length;
-      if (runCount > 1) {
-        playlist['author'] = {
-          'name': nav(header, subtitle2),
-          'id': nav(header, ['subtitle', 'runs', 2] + navigation_browse_id)
-        };
-        if (runCount == 5) {
-          playlist['year'] = nav(header, subtitle3);
-        }
-      }
-
-      final int secondSubtitleRunCount =
-          header['secondSubtitle']['runs'].length;
-      final String count = (((header['secondSubtitle']['runs']
-                      [secondSubtitleRunCount % 3]['text'])
-                  .split(' ')[0])
-              .split(',') as List)
-          .join();
-      final int songCount = int.parse(count);
-      if (header['secondSubtitle']['runs'].length > 1) {
-        playlist['duration'] = header['secondSubtitle']['runs']
-            [(secondSubtitleRunCount % 3) + 2]['text'];
-      }
-      playlist['trackCount'] = songCount;
-
-      requestFuncCountinuation(cont) async =>
-          (await _sendRequest("browse", {...data, ...cont})).data;
-
-      if (songCount > 0) {
-        playlist['tracks'] = parsePlaylistItems(results['contents']);
-        limit = songCount;
-
-        List<dynamic> parseFunc(contents) => parsePlaylistItems(contents);
-
-        playlist['tracks'] = [
-          ...(playlist['tracks']),
-          ...(await getContinuationsPlaylist(
-              results, limit, requestFuncCountinuation, parseFunc))
-        ];
-      }
-      playlist['duration_seconds'] = sumTotalDuration(playlist);
-      return playlist;
-    }
-
-    //album content
-    final album = parseAlbumHeader(response);
-    dynamic results = nav(
-          response,
-          [
-            'contents',
-            "twoColumnBrowseResultsRenderer",
-            "secondaryContents",
-            'sectionListRenderer',
-            'contents',
-            0,
-            'musicShelfRenderer'
-          ],
-        ) ??
-        nav(
-          response,
-          [
-            'contents',
-            "singleColumnBrowseResultsRenderer",
-            "tabs",
-            0,
-            "tabRenderer",
-            "content",
-            'sectionListRenderer',
-            'contents',
-            0,
-            'musicShelfRenderer'
-          ],
-        );
-
-    album['tracks'] = parsePlaylistItems(results['contents'],
-        artistsM: album['artists'],
-        thumbnailsM: album["thumbnails"],
-        albumIdName: {"id": albumId, 'name': album['title']},
-        albumYear: album['year'],
-        isAlbum: true);
-    results = nav(
-      response,
-      [...single_column_tab, ...section_list, 1, 'musicCarouselShelfRenderer'],
-    );
-    if (results != null) {
-      List contents = [];
-      if (results.runtimeType.toString().contains("Iterable") ||
-          results.runtimeType.toString().contains("List")) {
-        for (dynamic result in results) {
-          contents.add(parseAlbum(result['musicTwoRowItemRenderer']));
-        }
-      } else {
-        contents
-            .add(parseAlbum(results['contents'][0]['musicTwoRowItemRenderer']));
-      }
-      album['other_versions'] = contents;
-    }
-    album['duration_seconds'] = sumTotalDuration(album);
-
-    return album;
-  }
-
-  Future<List<String>> getSearchSuggestion(String queryStr) async {
-    final data = Map.from(_context);
-    data['input'] = queryStr;
-    final res = nav(
-            (await _sendRequest("music/get_search_suggestions", data)).data,
-            ['contents', 0, 'searchSuggestionsSectionRenderer', 'contents']) ??
-        [];
-    return res
-        .map<String?>((item) {
-          return (nav(item, [
-            'searchSuggestionRenderer',
-            'navigationEndpoint',
-            'searchEndpoint',
-            'query'
-          ])).toString();
-        })
-        .whereType<String>()
-        .toList();
-  }
-
-  ///Specially created for deep-links
-  Future<List> getSongWithId(String songId) async {
-    final data = Map.of(_context);
-    data['videoId'] = songId;
-    final response = (await _sendRequest("player", data)).data;
-    final category =
-        nav(response, ["microformat", "microformatDataRenderer", "category"]);
-    if (category == "Music" ||
-        (response["videoDetails"]).containsKey("musicVideoType")) {
-      final list = await getWatchPlaylist(videoId: songId);
-      return [true, list['tracks']];
-    }
-    return [false, null];
-  }
-
-  // ============================================================
-  //  MÉTODOS RESTAURADOS
-  // ============================================================
-
-  Future<String> getSongYear(String songId) async {
-    try {
-      final data = Map.of(_context);
-      data['videoId'] = songId;
-      final response = await _sendRequest("player", data);
-      final year = nav(response.data, [
-        'microformat',
-        'microformatDataRenderer',
-        'publishedDate'
-      ]);
-      if (year != null && year is String) {
-        final match = RegExp(r'\d{4}').firstMatch(year);
-        return match?.group(0) ?? DateTime.now().year.toString();
-      }
-    } catch (_) {}
-    return DateTime.now().year.toString();
-  }
-
-  Future<Map<String, dynamic>> getArtist(String artistId) async {
-    final data = Map.of(_context);
-    data['browseId'] = artistId;
-    try {
-      final response = await _sendRequest("browse", data);
-      final header = nav(response.data, [
-        'header',
-        'musicImmersiveHeaderRenderer'
-      ]) ??
-          nav(response.data, [
-            'header',
-            'musicArtistHeaderRenderer'
-          ]);
-      if (header != null) {
-        return {
-          'id': artistId,
-          'name': nav(header, title_text) ?? 'Unknown Artist',
-          'thumbnails': nav(header, thumnail_cropped) ?? [],
-          'description': nav(header, description) ?? '',
-          'subscribers': nav(header, [
-            'subtitle',
-            'runs',
-            0,
-            'text'
-          ]) ?? '0',
-          'radioId': nav(header, [
-            'playButton',
-            'buttonRenderer',
-            'command',
-            'watchEndpoint',
-            'playlistId'
-          ]) ?? '',
-        };
-      }
-    } catch (_) {}
-    return {
-      'id': artistId,
-      'name': 'Artist $artistId',
-      'thumbnails': [],
-      'description': '',
-    };
-  }
-
-  Future<Map<String, dynamic>> getArtistRealtedContent(
-      String artistId, String tabName,
-      {int limit = 10, Map<String, dynamic>? additionalParams}) async {
-    try {
-      final data = Map.of(_context);
-      data['browseId'] = artistId;
-      data['params'] = _getArtistTabParams(tabName);
-      if (additionalParams != null && additionalParams.isNotEmpty) {
-        data.addAll(additionalParams);
-      }
-      final response = await _sendRequest("browse", data);
-      
-      final results = nav(response.data, [
-        'contents',
-        'twoColumnBrowseResultsRenderer',
-        'secondaryContents',
-        'sectionListRenderer',
-        'contents',
-        0,
-        'musicShelfRenderer',
-        'contents'
-      ]);
-      
-      final continuation = nav(response.data, [
-        'contents',
-        'twoColumnBrowseResultsRenderer',
-        'secondaryContents',
-        'sectionListRenderer',
-        'continuations',
-        0,
-        'nextContinuationData'
-      ]);
-      
-      return {
-        'contents': results is List ? results : [],
-        'additionalParams': continuation != null ? {'continuation': continuation} : {},
-      };
+      printERROR("Erro na requisição para $endpoint: $e");
+      throw NetworkError("Falha na comunicação com o proxy: ${e.message}");
     } catch (e) {
-      printERROR("Error fetching artist content: $e");
-      return {
-        'contents': [],
-        'additionalParams': {},
-      };
+      printERROR("Erro inesperado: $e");
+      throw NetworkError("Erro inesperado: $e");
     }
   }
 
-  String _getArtistTabParams(String tabName) {
-    switch (tabName.toLowerCase()) {
-      case 'songs':
-        return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
-      case 'albums':
-        return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
-      case 'playlists':
-        return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
-      default:
-        return '';
-    }
-  }
+  // ============================================================
+  //  MÉTODOS PÚBLICOS REFATORADOS
+  // ============================================================
 
-  Future<Map<String, dynamic>> getSearchContinuation(
-      Map<String, dynamic> continuationParams,
-      {int limit = 10}) async {
+  // ------------------------------------------------------------------
+  // 1. SEARCH - /search?q=...
+  // ------------------------------------------------------------------
+  Future<Map<String, dynamic>> search(
+    String query, {
+    String? filter,
+    String? scope,
+    int limit = 30,
+    bool ignoreSpelling = false,
+    String? filterParams,
+  }) async {
     try {
-      final data = Map.of(_context);
-      data.addAll(continuationParams);
-      final response = await _sendRequest("search", data);
-      return response.data;
-    } catch (_) {
+      // O proxy atualmente não suporta filtros, mas podemos passar o limit
+      final Map<String, dynamic> params = {
+        'q': query,
+        'limit': limit,
+      };
+      // Se o proxy futuramente suportar filtros, podemos adicionar
+      if (filter != null) params['filter'] = filter;
+      if (filterParams != null) params['filterParams'] = filterParams;
+
+      final data = await _get('/search', queryParams: params);
+
+      // O proxy retorna algo como: { "query": "...", "results": [...] }
+      // Precisamos extrair os resultados e colocá-los no formato que as telas esperam
+      final results = data['results'] ?? [];
+
+      // Normaliza a saída: cria um mapa com categorias (Songs, Videos, etc.)
+      // O proxy já retorna os dados estruturados pelo ytmusicapi, que inclui 'resultType'
+      return _categorizeSearchResults(results);
+    } catch (e) {
+      printERROR("Erro no search: $e");
       return {};
     }
   }
 
-  // ============================================================
-  //  🚀 MÉTODO SEARCH REFATORADO (com extração robusta)
-  // ============================================================
-  Future<Map<String, dynamic>> search(String query,
-      {String? filter,
-      String? scope,
-      int limit = 30,
-      bool ignoreSpelling = false,
-      String? filterParams}) async {
-    final data = Map.of(_context);
-    data['context']['client']["hl"] = 'en';
-    data['query'] = query;
+  // ------------------------------------------------------------------
+  // 2. GET HOME - como o proxy não tem /home, retornamos uma lista vazia
+  //    (ou podemos usar uma busca com "top" ou similar, mas melhor retornar vazio)
+  // ------------------------------------------------------------------
+  Future<dynamic> getHome({int limit = 4}) async {
+    printINFO("⚠️ getHome não suportado pelo proxy. Retornando lista vazia.");
+    // Se quiser, pode chamar /search?q=top%20songs ou algo similar
+    // Mas para não quebrar, retornamos lista vazia
+    return [];
+  }
 
-    final Map<String, dynamic> searchResults = {};
-    final filters = [
-      'albums',
-      'artists',
-      'playlists',
-      'community_playlists',
-      'featured_playlists',
-      'songs',
-      'videos'
-    ];
+  // ------------------------------------------------------------------
+  // 3. GET CHARTS - O proxy não tem /charts, retornamos vazio
+  // ------------------------------------------------------------------
+  Future<List<Map<String, dynamic>>> getCharts(String category,
+      {String? countryCode}) async {
+    printINFO("⚠️ getCharts não suportado pelo proxy. Retornando vazio.");
+    return [];
+  }
 
-    if (filter != null && !filters.contains(filter)) {
-      throw Exception(
-          'Invalid filter provided. Please use one of the following filters or leave out the parameter: ${filters.join(', ')}');
-    }
-
-    final scopes = ['library', 'uploads'];
-
-    if (scope != null && !scopes.contains(scope)) {
-      throw Exception(
-          'Invalid scope provided. Please use one of the following scopes or leave out the parameter: ${scopes.join(', ')}');
-    }
-
-    if (scope == scopes[1] && filter != null) {
-      throw Exception(
-          'No filter can be set when searching uploads. Please unset the filter parameter when scope is set to uploads.');
-    }
-
-    final params = getSearchParams(filter, scope, ignoreSpelling);
-
-    if (filterParams != null || params != null) {
-      data['params'] = filterParams ?? params;
-    }
-
-    final response = (await _sendRequest("search", data)).data;
-
-    if (response['contents'] == null) {
-      printINFO("⚠️ Resposta da busca não contém 'contents'");
-      return searchResults;
-    }
-
-    // ==========================================================
-    // 🔥 EXTRAÇÃO DE ITENS: tenta múltiplos caminhos
-    // ==========================================================
-    List<dynamic> mixedItems = [];
+  // ------------------------------------------------------------------
+  // 4. GET WATCH PLAYLIST - usando /get_song para obter a música e extrair playlist?
+  //    Não temos um endpoint específico. Vamos retornar uma estrutura básica.
+  // ------------------------------------------------------------------
+  Future<Map<String, dynamic>> getWatchPlaylist({
+    String videoId = "",
+    String? playlistId,
+    int limit = 25,
+    bool radio = false,
+    bool shuffle = false,
+    String? additionalParamsNext,
+    bool onlyRelated = false,
+  }) async {
     try {
-      // Caminho 1: usar parseMixedContent (padrão)
-      dynamic results;
-      if ((response['contents']).containsKey('tabbedSearchResultsRenderer')) {
-        final tabIndex = scope == null || filter != null ? 0 : scopes.indexOf(scope) + 1;
-        results = response['contents']['tabbedSearchResultsRenderer']['tabs']
-            [tabIndex]['tabRenderer']['content'];
-      } else {
-        results = response['contents'];
+      // Se tiver videoId, usa /get_song para obter a música e montar a playlist
+      if (videoId.isNotEmpty) {
+        final songData = await _get('/get_song', queryParams: {'videoId': videoId});
+        // Extrai a playlist relacionada (se houver) do campo 'relatedPlaylists'? 
+        // O ytmusicapi retorna isso no get_song? Não diretamente.
+        // Vamos montar uma estrutura mínima com a música
+        final track = _extractTrackFromSong(songData);
+        return {
+          'tracks': [track],
+          'playlistId': playlistId ?? '',
+          'lyrics': null,
+          'related': null,
+          'additionalParamsForNext': null,
+        };
+      } else if (playlistId != null) {
+        // Se tiver playlistId, usa /get_playlist
+        final playlistData = await _get('/get_playlist', queryParams: {'playlistId': playlistId});
+        final tracks = playlistData['tracks'] ?? [];
+        return {
+          'tracks': tracks,
+          'playlistId': playlistId,
+          'lyrics': null,
+          'related': null,
+          'additionalParamsForNext': null,
+        };
       }
-      mixedItems = parseMixedContent(results);
-      printINFO("✅ parseMixedContent extraiu ${mixedItems.length} itens");
+      return {'tracks': [], 'playlistId': '', 'lyrics': null, 'related': null, 'additionalParamsForNext': null};
     } catch (e) {
-      printINFO("⚠️ parseMixedContent falhou: $e");
+      printERROR("Erro no getWatchPlaylist: $e");
+      return {'tracks': [], 'playlistId': '', 'lyrics': null, 'related': null, 'additionalParamsForNext': null};
     }
-
-    // Se o parseMixedContent não extraiu nada, tenta extrair manualmente
-    if (mixedItems.isEmpty) {
-      printINFO("🔍 Tentando extração manual de itens...");
-      mixedItems = _extractItemsManually(response);
-      printINFO("✅ Extração manual encontrou ${mixedItems.length} itens");
-    }
-
-    // Se ainda não houver itens, tenta buscar em playlists (fallback)
-    if (mixedItems.isEmpty) {
-      printINFO("⚠️ Nenhum item encontrado. Tentando extrair de playlists...");
-      // Tenta extrair playlists e depois suas faixas
-      final playlists = _extractPlaylistsManually(response);
-      if (playlists.isNotEmpty) {
-        for (var playlist in playlists) {
-          if (playlist is Map && (playlist.containsKey('tracks') || playlist.containsKey('items'))) {
-            final tracks = playlist['tracks'] ?? playlist['items'];
-            if (tracks is List) mixedItems.addAll(tracks);
-          }
-        }
-        printINFO("🎵 Extraídas ${mixedItems.length} músicas de playlists");
-      }
-    }
-
-    // ==========================================================
-    // 🔥 CATEGORIZA POR TIPO
-    // ==========================================================
-    final categorized = _categorizeItems(mixedItems);
-
-    // ==========================================================
-    // 🔥 FALLBACK FINAL: se não houver Songs, extrai de playlists
-    // ==========================================================
-    if (!categorized.containsKey('Songs') || (categorized['Songs'] as List).isEmpty) {
-      printINFO("⚠️ Nenhuma música na categorização. Tentando extrair de playlists novamente...");
-      final songsFromPlaylists = _extractSongsFromPlaylists(categorized);
-      if (songsFromPlaylists.isNotEmpty) {
-        categorized['Songs'] = songsFromPlaylists;
-        printINFO("🎵 Extraídas ${songsFromPlaylists.length} músicas das playlists.");
-      }
-    }
-
-    // ==========================================================
-    // 🔥 NORMALIZA E RETORNA
-    // ==========================================================
-    final normalized = _normalizeKeys(categorized);
-    searchResults.addAll(normalized);
-    printINFO("📋 Categorias finais: ${normalized.keys}");
-    return searchResults;
   }
 
-  // ============================================================
-  //  FUNÇÕES AUXILIARES DE EXTRAÇÃO MANUAL
-  // ============================================================
-
-  /// Tenta extrair itens manualmente percorrendo a árvore da resposta
-  List<dynamic> _extractItemsManually(Map<String, dynamic> response) {
-    List<dynamic> items = [];
+  // ------------------------------------------------------------------
+  // 5. GET PLAYLIST OR ALBUM SONGS
+  // ------------------------------------------------------------------
+  Future<Map<String, dynamic>> getPlaylistOrAlbumSongs({
+    String? playlistId,
+    String? albumId,
+    int limit = 3000,
+    bool related = false,
+    int suggestionsLimit = 0,
+  }) async {
     try {
-      // Tenta encontrar qualquer 'musicShelfRenderer' ou 'musicTwoRowItemRenderer'
-      _traverseAndCollect(response, (node) {
-        if (node is Map) {
-          // Verifica se é um item de música
-          if (node.containsKey('musicShelfRenderer')) {
-            final shelf = node['musicShelfRenderer'];
-            if (shelf is Map && shelf.containsKey('contents')) {
-              final contents = shelf['contents'];
-              if (contents is List) {
-                items.addAll(contents);
-              }
-            }
-          }
-          // Verifica se é um item de playlist
-          if (node.containsKey('musicTwoRowItemRenderer')) {
-            final item = node['musicTwoRowItemRenderer'];
-            if (item is Map) {
-              items.add(item);
-            }
-          }
-          // Verifica se é um item de vídeo/música
-          if (node.containsKey('musicResponsiveListItemRenderer')) {
-            final item = node['musicResponsiveListItemRenderer'];
-            if (item is Map) {
-              items.add(item);
-            }
-          }
-        }
-        return true; // continua a travessia
-      });
-    } catch (e) {
-      printINFO("⚠️ Erro na extração manual: $e");
-    }
-    return items;
-  }
-
-  /// Extrai playlists manualmente
-  List<dynamic> _extractPlaylistsManually(Map<String, dynamic> response) {
-    List<dynamic> playlists = [];
-    try {
-      _traverseAndCollect(response, (node) {
-        if (node is Map && node.containsKey('musicTwoRowItemRenderer')) {
-          final item = node['musicTwoRowItemRenderer'];
-          if (item is Map && item.containsKey('playlistId')) {
-            playlists.add(item);
-          }
-        }
-        return true;
-      });
-    } catch (e) {
-      printINFO("⚠️ Erro na extração de playlists: $e");
-    }
-    return playlists;
-  }
-
-  /// Função genérica de travessia recursiva
-  void _traverseAndCollect(dynamic node, bool Function(dynamic) collector) {
-    if (node == null) return;
-    if (!collector(node)) return;
-    if (node is Map) {
-      node.forEach((key, value) {
-        _traverseAndCollect(value, collector);
-      });
-    } else if (node is List) {
-      for (var item in node) {
-        _traverseAndCollect(item, collector);
+      if (playlistId != null) {
+        final data = await _get('/get_playlist', queryParams: {'playlistId': playlistId});
+        // Ajusta para o formato que o app espera (similar ao antigo parse)
+        return _formatPlaylistData(data);
+      } else if (albumId != null) {
+        final data = await _get('/get_album', queryParams: {'browseId': albumId});
+        return _formatAlbumData(data);
       }
+      return {};
+    } catch (e) {
+      printERROR("Erro no getPlaylistOrAlbumSongs: $e");
+      return {};
     }
   }
 
+  // ------------------------------------------------------------------
+  // 6. GET ARTIST - /get_artist?browseId=...
+  // ------------------------------------------------------------------
+  Future<Map<String, dynamic>> getArtist(String artistId) async {
+    try {
+      // O proxy ainda não tem /get_artist, mas podemos usar /search?q=artistId
+      // ou adicionar no proxy. Vamos retornar um stub.
+      printINFO("⚠️ getArtist não implementado no proxy. Retornando stub.");
+      return {
+        'id': artistId,
+        'name': 'Artist $artistId',
+        'thumbnails': [],
+        'description': '',
+        'subscribers': '0',
+        'radioId': '',
+      };
+    } catch (e) {
+      printERROR("Erro no getArtist: $e");
+      return {
+        'id': artistId,
+        'name': 'Unknown Artist',
+        'thumbnails': [],
+        'description': '',
+      };
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // 7. GET ARTIST RELATED CONTENT - stub
+  // ------------------------------------------------------------------
+  Future<Map<String, dynamic>> getArtistRelatedContent(
+    String artistId,
+    String tabName, {
+    int limit = 10,
+    Map<String, dynamic>? additionalParams,
+  }) async {
+    printINFO("⚠️ getArtistRelatedContent não implementado no proxy. Retornando vazio.");
+    return {
+      'contents': [],
+      'additionalParams': {},
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // 8. GET SEARCH CONTINUATION - stub (scroll infinito)
+  // ------------------------------------------------------------------
+  Future<Map<String, dynamic>> getSearchContinuation(
+    Map<String, dynamic> continuationParams, {
+    int limit = 10,
+  }) async {
+    // O proxy não suporta continuação. Retornamos vazio.
+    printINFO("⚠️ getSearchContinuation não suportado pelo proxy.");
+    return {};
+  }
+
+  // ------------------------------------------------------------------
+  // 9. GET SONG YEAR - via /get_song
+  // ------------------------------------------------------------------
+  Future<String> getSongYear(String songId) async {
+    try {
+      final data = await _get('/get_song', queryParams: {'videoId': songId});
+      // Tenta extrair o ano do campo 'year' ou 'publishedDate'
+      final year = data['year'] ?? data['publishedDate'] ?? '';
+      if (year is String && year.isNotEmpty) {
+        final match = RegExp(r'\d{4}').firstMatch(year);
+        return match?.group(0) ?? DateTime.now().year.toString();
+      }
+      return DateTime.now().year.toString();
+    } catch (_) {
+      return DateTime.now().year.toString();
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // 10. GET SONG WITH ID (para deep links) - via /get_song
+  // ------------------------------------------------------------------
+  Future<List> getSongWithId(String songId) async {
+    try {
+      final data = await _get('/get_song', queryParams: {'videoId': songId});
+      // Se veio dados, consideramos que é uma música válida
+      if (data.isNotEmpty) {
+        final track = _extractTrackFromSong(data);
+        return [true, [track]];
+      }
+      return [false, null];
+    } catch (_) {
+      return [false, null];
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // 11. GET LYRICS - não suportado, retorna vazio
+  // ------------------------------------------------------------------
+  dynamic getLyrics(String browseId) {
+    printINFO("⚠️ getLyrics não suportado pelo proxy.");
+    return '';
+  }
+
+  // ------------------------------------------------------------------
+  // 12. GET CONTENT RELATED TO SONG - stub
+  // ------------------------------------------------------------------
+  dynamic getContentRelatedToSong(String videoId, String hlCode) {
+    printINFO("⚠️ getContentRelatedToSong não suportado pelo proxy.");
+    return [];
+  }
+
+  // ------------------------------------------------------------------
+  // 13. GET SEARCH SUGGESTIONS - não temos, retornamos vazio
+  // ------------------------------------------------------------------
+  Future<List<String>> getSearchSuggestion(String queryStr) async {
+    printINFO("⚠️ getSearchSuggestion não suportado pelo proxy.");
+    return [];
+  }
+
   // ============================================================
-  //  FUNÇÕES DE CATEGORIZAÇÃO (mesmas de antes, com pequenas melhorias)
+  //  FUNÇÕES AUXILIARES DE FORMATAÇÃO (para compatibilidade)
   // ============================================================
 
-  Map<String, List<dynamic>> _categorizeItems(List<dynamic> items) {
+  /// Categoriza os resultados da busca para o formato que as telas esperam
+  Map<String, dynamic> _categorizeSearchResults(List<dynamic> results) {
     final Map<String, List<dynamic>> categories = {
       'Songs': [],
       'Videos': [],
       'Albums': [],
       'Artists': [],
-      'Playlists': [],
       'Featured playlists': [],
       'Community playlists': [],
     };
 
-    for (var item in items) {
-      String type = _getItemType(item);
-      switch (type) {
+    for (var item in results) {
+      if (item is! Map) continue;
+      final type = item['resultType']?.toString() ?? '';
+      final title = item['title']?.toString() ?? '';
+      final id = item['browseId']?.toString() ?? item['playlistId']?.toString() ?? '';
+
+      switch (type.toLowerCase()) {
         case 'song':
         case 'track':
-        case 'music':
           categories['Songs']!.add(item);
           break;
         case 'video':
-        case 'music_video':
           categories['Videos']!.add(item);
           break;
         case 'album':
@@ -929,26 +365,20 @@ class MusicServices extends getx.GetxService {
           categories['Artists']!.add(item);
           break;
         case 'playlist':
-          if (_isCommunityPlaylist(item)) {
+          if (title.toLowerCase().contains('community') || id.contains('community')) {
             categories['Community playlists']!.add(item);
           } else {
             categories['Featured playlists']!.add(item);
           }
           break;
         default:
-          // Fallback: tenta adivinhar
-          if (item is Map) {
-            if (item.containsKey('tracks') || item.containsKey('items')) {
-              categories['Playlists']!.add(item);
-            } else if (item.containsKey('artist') || item.containsKey('channel')) {
-              categories['Artists']!.add(item);
-            } else if (item.containsKey('album') || (item.containsKey('title') && item.containsKey('year'))) {
-              categories['Albums']!.add(item);
-            } else if (item.containsKey('title') && item.containsKey('artist')) {
-              categories['Songs']!.add(item);
-            } else if (item.containsKey('videoId') && item.containsKey('title')) {
-              categories['Videos']!.add(item);
-            }
+          // Fallback
+          if (item.containsKey('videoId') && item.containsKey('title')) {
+            categories['Songs']!.add(item);
+          } else if (item.containsKey('browseId') && item.containsKey('trackCount')) {
+            categories['Albums']!.add(item);
+          } else if (item.containsKey('playlistId')) {
+            categories['Featured playlists']!.add(item);
           }
       }
     }
@@ -957,78 +387,67 @@ class MusicServices extends getx.GetxService {
     return categories;
   }
 
-  String _getItemType(dynamic item) {
-    if (item is! Map) return 'unknown';
-
-    if (item.containsKey('resultType')) {
-      final type = item['resultType'].toString().toLowerCase();
-      if (type.contains('song') || type.contains('track')) return 'song';
-      if (type.contains('video')) return 'video';
-      if (type.contains('album')) return 'album';
-      if (type.contains('artist')) return 'artist';
-      if (type.contains('playlist')) return 'playlist';
-    }
-
-    if (item.containsKey('videoId') && item.containsKey('title')) {
-      if (item.containsKey('length') && item['length'] is int && item['length'] < 600) {
-        return 'song';
-      }
-      return 'video';
-    }
-    if (item.containsKey('browseId') && item.containsKey('title')) {
-      if (item.containsKey('trackCount')) return 'album';
-      if (item.containsKey('artist') || item.containsKey('channel')) return 'artist';
-      if (item.containsKey('playlistId')) return 'playlist';
-    }
-    if (item.containsKey('tracks') || item.containsKey('items')) {
-      return 'playlist';
-    }
-    return 'unknown';
+  /// Formata dados de playlist para o formato esperado pelo app
+  Map<String, dynamic> _formatPlaylistData(Map<String, dynamic> data) {
+    return {
+      'id': data['id'] ?? '',
+      'title': data['title'] ?? '',
+      'thumbnails': data['thumbnails'] ?? [],
+      'description': data['description'] ?? '',
+      'trackCount': data['trackCount'] ?? 0,
+      'duration': data['duration'] ?? '',
+      'tracks': data['tracks'] ?? [],
+      'author': data['author'] ?? {},
+      'year': data['year'] ?? '',
+      'duration_seconds': _sumTotalDuration(data['tracks'] ?? []),
+    };
   }
 
-  bool _isCommunityPlaylist(dynamic item) {
-    if (item is! Map) return false;
-    final title = item['title']?.toString().toLowerCase() ?? '';
-    final id = item['id']?.toString().toLowerCase() ?? '';
-    return title.contains('community') || id.contains('community');
+  /// Formata dados de álbum
+  Map<String, dynamic> _formatAlbumData(Map<String, dynamic> data) {
+    return {
+      'id': data['id'] ?? '',
+      'title': data['title'] ?? '',
+      'thumbnails': data['thumbnails'] ?? [],
+      'description': data['description'] ?? '',
+      'trackCount': data['trackCount'] ?? 0,
+      'tracks': data['tracks'] ?? [],
+      'artists': data['artists'] ?? [],
+      'year': data['year'] ?? '',
+      'duration_seconds': _sumTotalDuration(data['tracks'] ?? []),
+      'other_versions': data['other_versions'] ?? [],
+    };
   }
 
-  List<dynamic> _extractSongsFromPlaylists(Map<String, List<dynamic>> categories) {
-    final List<dynamic> extracted = [];
-    final playlistKeys = ['Playlists', 'Featured playlists', 'Community playlists'];
-    for (var key in playlistKeys) {
-      if (categories.containsKey(key)) {
-        final playlists = categories[key]!;
-        for (var playlist in playlists) {
-          if (playlist is Map) {
-            final tracks = playlist['tracks'] ?? playlist['items'] ?? playlist['contents'];
-            if (tracks is List) {
-              extracted.addAll(tracks);
-            }
-          }
+  /// Extrai uma única faixa do retorno de /get_song
+  Map<String, dynamic> _extractTrackFromSong(Map<String, dynamic> songData) {
+    return {
+      'videoId': songData['videoId'] ?? '',
+      'title': songData['title'] ?? '',
+      'artists': songData['artists'] ?? [],
+      'album': songData['album'] ?? {},
+      'thumbnails': songData['thumbnails'] ?? [],
+      'duration': songData['duration'] ?? 0,
+      'year': songData['year'] ?? '',
+      'playlistId': songData['playlistId'] ?? '',
+    };
+  }
+
+  /// Calcula duração total de uma lista de faixas
+  int _sumTotalDuration(List<dynamic> tracks) {
+    int total = 0;
+    for (var track in tracks) {
+      if (track is Map && track.containsKey('duration')) {
+        final dur = track['duration'];
+        if (dur is int) total += dur;
+        else if (dur is String) {
+          // Tenta parsear se for string
+          try {
+            total += int.parse(dur);
+          } catch (_) {}
         }
       }
     }
-    return extracted;
-  }
-
-  Map<String, List<dynamic>> _normalizeKeys(Map<String, List<dynamic>> input) {
-    final Map<String, List<dynamic>> normalized = {};
-    input.forEach((key, value) {
-      String newKey = key;
-      if (key.toLowerCase() == 'songs' || key.toLowerCase() == 'tracks') newKey = 'Songs';
-      else if (key.toLowerCase() == 'videos') newKey = 'Videos';
-      else if (key.toLowerCase() == 'albums') newKey = 'Albums';
-      else if (key.toLowerCase() == 'artists' || key.toLowerCase() == 'channels') newKey = 'Artists';
-      else if (key.toLowerCase() == 'playlists' || key.toLowerCase() == 'featured_playlists') newKey = 'Featured playlists';
-      else if (key.toLowerCase() == 'community_playlists') newKey = 'Community playlists';
-      else newKey = key;
-      if (normalized.containsKey(newKey)) {
-        normalized[newKey]!.addAll(value);
-      } else {
-        normalized[newKey] = List.from(value);
-      }
-    });
-    return normalized;
+    return total;
   }
 }
