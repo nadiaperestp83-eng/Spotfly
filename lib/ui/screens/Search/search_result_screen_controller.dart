@@ -25,6 +25,19 @@ class SearchResultScreenController extends GetxController
   bool isTabTransitionReversed = false;
   final Map<String, ScrollController> scrollControllers = {};
 
+  // 🔥 MAPEAMENTO DE CHAVES: nomes alternativos → nomes padrão da UI
+  static const Map<String, String> keyMapping = {
+    'Tracks': 'Songs',
+    'Songs': 'Songs',
+    'Videos': 'Videos',
+    'Albums': 'Albums',
+    'Artists': 'Artists',
+    'Channels': 'Artists',
+    'Featured playlists': 'Featured playlists',
+    'Community playlists': 'Community playlists',
+    'Playlists': 'Featured playlists', // fallback
+  };
+
   @override
   void onReady() {
     _getInitSearchResult();
@@ -153,8 +166,8 @@ class SearchResultScreenController extends GetxController
         .search(args);
 
     // Log para diagnóstico
-    printINFO("Chaves recebidas: ${result.categories.keys}");
-    printINFO("Conteúdo: ${result.categories}");
+    printINFO("🔍 Chaves originais: ${result.categories.keys}");
+    printINFO("📦 Conteúdo: ${result.categories}");
 
     final asyncState = appProviderContainer.read(searchNotifierProvider);
     if (asyncState.hasError) {
@@ -168,36 +181,54 @@ class SearchResultScreenController extends GetxController
       );
     }
 
-    // 🔥 CORREÇÃO: filtra apenas chaves cujo valor é uma List não vazia
-    // Isso exclui "searchEndpoint" e outros metadados que sejam Map
-    final allKeys = result.categories.keys
-        .where((key) => result.categories[key] is List &&
-            (result.categories[key] as List).isNotEmpty)
+    // 🔥 1) Normaliza as chaves: mapeia nomes alternativos para os padrões
+    Map<String, dynamic> normalizedMap = {};
+    result.categories.forEach((key, value) {
+      final normalizedKey = keyMapping[key] ?? key; // mantém original se não mapeado
+      // Se a chave normalizada já existir, mescla as listas (se forem listas)
+      if (normalizedMap.containsKey(normalizedKey)) {
+        if (value is List && normalizedMap[normalizedKey] is List) {
+          normalizedMap[normalizedKey] = [
+            ...normalizedMap[normalizedKey],
+            ...value
+          ];
+        } else {
+          // Sobrescreve (caso raro)
+          normalizedMap[normalizedKey] = value;
+        }
+      } else {
+        normalizedMap[normalizedKey] = value;
+      }
+    });
+
+    // 🔥 2) Lista de categorias relevantes (as que queremos mostrar)
+    final relevantKeys = [
+      'Songs',
+      'Videos',
+      'Albums',
+      'Artists',
+      'Featured playlists',
+      'Community playlists'
+    ];
+
+    // 🔥 3) Pega todas as chaves que existem no mapa normalizado e que são listas
+    // (mesmo que vazias – para mostrar a aba mesmo sem itens)
+    final allKeys = relevantKeys
+        .where((key) => normalizedMap.containsKey(key) && normalizedMap[key] is List)
         .toList();
 
-    // Fallback: se nenhuma lista foi encontrada, tenta nomes comuns
+    // Se nenhuma das relevantes foi encontrada, usa todas as chaves que são listas
     if (allKeys.isEmpty) {
-      final fallbackKeys = [
-        "Songs",
-        "Videos",
-        "Albums",
-        "Featured playlists",
-        "Community playlists",
-        "Artists"
-      ];
-      for (var key in fallbackKeys) {
-        if (result.categories.containsKey(key) &&
-            result.categories[key] is List &&
-            (result.categories[key] as List).isNotEmpty) {
-          allKeys.add(key);
-        }
-      }
+      final listKeys = normalizedMap.keys
+          .where((key) => normalizedMap[key] is List)
+          .toList();
+      allKeys.addAll(listKeys);
     }
 
     railItems.value = allKeys;
 
-    // Armazena todo o resultado (incluindo metadados)
-    resultContent.value = Map<String, dynamic>.from(result.categories);
+    // Armazena o mapa normalizado (incluindo metadados como searchEndpoint)
+    resultContent.value = Map<String, dynamic>.from(normalizedMap);
 
     // Cálculo da altura do rail (opcional)
     final len = railItems.where((element) => element.contains("playlists")).length;
