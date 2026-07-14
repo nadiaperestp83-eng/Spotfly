@@ -26,6 +26,7 @@ import '/services/permission_service.dart';
 import '../utils/helper.dart';
 import '/models/media_Item_builder.dart';
 import '/services/utils.dart';
+import '/services/constant.dart';
 import '../ui/screens/Settings/settings_screen_controller.dart';
 import '../ui/screens/Library/library_controller.dart';
 // ignore: unused_import, implementation_imports, depend_on_referenced_packages
@@ -285,6 +286,13 @@ class MyAudioHandler extends BaseAudioHandler with GetxServiceMixin {
       isPlayingUsingLockCachingSource = true;
       return LockCachingAudioSource(
         Uri.parse(url),
+        headers: url.startsWith('http')
+            ? {
+                'User-Agent': userAgent,
+                'Referer': domain,
+                'Origin': domain,
+              }
+            : null,
         cacheFile: File("$_cacheDir/cachedSongs/${mediaItem.id}.mp3"),
         tag: mediaItem,
       );
@@ -294,6 +302,18 @@ class MyAudioHandler extends BaseAudioHandler with GetxServiceMixin {
     isPlayingUsingLockCachingSource = false;
     return AudioSource.uri(
       Uri.tryParse(url)!,
+      // O googlevideo.com normalmente aceita a URL assinada sem exigir
+      // headers extras, mas alguns itags/CDNs edge são mais estritos e
+      // esperam um User-Agent "de navegador" e/ou Referer coerente com
+      // o client usado na extração (WEB_REMIX). Mandar esses headers é
+      // uma forma barata de reduzir 403s intermitentes.
+      headers: url.startsWith('http')
+          ? {
+              'User-Agent': userAgent,
+              'Referer': domain,
+              'Origin': domain,
+            }
+          : null,
       tag: mediaItem,
     );
   }
