@@ -45,8 +45,8 @@ android {
     defaultConfig {
         applicationId "com.anandnet.harmonymusic"
         minSdk = 21 // ou flutter.minSdkVersion
-        // 🔥 ALTERADO PARA 35
-        targetSdk = 35
+        // 🔥 ALTERADO PARA 34
+        targetSdk = 34
         // targetSdkVersion flutter.targetSdkVersion  // <-- REMOVA ESTA LINHA
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
