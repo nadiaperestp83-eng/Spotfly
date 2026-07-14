@@ -14,7 +14,7 @@ import 'continuations.dart';
 import 'nav_parser.dart';
 
 // ============================================================
-//  DEFINIÇÃO DA EXCEÇÃO NetworkError (se não existir em outro lugar)
+//  DEFINIÇÃO DA EXCEÇÃO NetworkError
 // ============================================================
 class NetworkError implements Exception {
   final String message;
@@ -557,10 +557,9 @@ class MusicServices extends getx.GetxService {
   }
 
   // ============================================================
-  //  MÉTODOS QUE ESTAVAM FALTANDO (restaurados e corrigidos)
+  //  MÉTODOS RESTAURADOS
   // ============================================================
 
-  /// Obtém o ano de uma música
   Future<String> getSongYear(String songId) async {
     try {
       final data = Map.of(_context);
@@ -579,7 +578,6 @@ class MusicServices extends getx.GetxService {
     return DateTime.now().year.toString();
   }
 
-  /// Obtém informações de um artista
   Future<Map<String, dynamic>> getArtist(String artistId) async {
     final data = Map.of(_context);
     data['browseId'] = artistId;
@@ -599,6 +597,19 @@ class MusicServices extends getx.GetxService {
           'name': nav(header, title_text) ?? 'Unknown Artist',
           'thumbnails': nav(header, thumnail_cropped) ?? [],
           'description': nav(header, description) ?? '',
+          'subscribers': nav(header, [
+            'subtitle',
+            'runs',
+            0,
+            'text'
+          ]) ?? '0',
+          'radioId': nav(header, [
+            'playButton',
+            'buttonRenderer',
+            'command',
+            'watchEndpoint',
+            'playlistId'
+          ]) ?? '',
         };
       }
     } catch (_) {}
@@ -610,7 +621,6 @@ class MusicServices extends getx.GetxService {
     };
   }
 
-  /// Obtém conteúdo relacionado a um artista (com suporte a parâmetros adicionais)
   Future<Map<String, dynamic>> getArtistRealtedContent(
       String artistId, String tabName,
       {int limit = 10, Map<String, dynamic>? additionalParams}) async {
@@ -618,13 +628,11 @@ class MusicServices extends getx.GetxService {
       final data = Map.of(_context);
       data['browseId'] = artistId;
       data['params'] = _getArtistTabParams(tabName);
-      // Se houver parâmetros adicionais (para continuação), mescla
       if (additionalParams != null && additionalParams.isNotEmpty) {
         data.addAll(additionalParams);
       }
       final response = await _sendRequest("browse", data);
       
-      // Tenta extrair os conteúdos da aba
       final results = nav(response.data, [
         'contents',
         'twoColumnBrowseResultsRenderer',
@@ -636,7 +644,6 @@ class MusicServices extends getx.GetxService {
         'contents'
       ]);
       
-      // Tenta obter parâmetros de continuação, se houver
       final continuation = nav(response.data, [
         'contents',
         'twoColumnBrowseResultsRenderer',
@@ -661,7 +668,6 @@ class MusicServices extends getx.GetxService {
   }
 
   String _getArtistTabParams(String tabName) {
-    // Mapeamento básico para as abas do artista
     switch (tabName.toLowerCase()) {
       case 'songs':
         return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
@@ -674,7 +680,6 @@ class MusicServices extends getx.GetxService {
     }
   }
 
-  /// Obtém continuação da busca (scroll infinito) - usado pelo SearchCoordinator
   Future<Map<String, dynamic>> getSearchContinuation(
       Map<String, dynamic> continuationParams,
       {int limit = 10}) async {
@@ -689,7 +694,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ============================================================
-  //  🚀 MÉTODO SEARCH REFATORADO
+  //  🚀 MÉTODO SEARCH REFATORADO (com extração robusta)
   // ============================================================
   Future<Map<String, dynamic>> search(String query,
       {String? filter,
@@ -738,36 +743,63 @@ class MusicServices extends getx.GetxService {
     final response = (await _sendRequest("search", data)).data;
 
     if (response['contents'] == null) {
+      printINFO("⚠️ Resposta da busca não contém 'contents'");
       return searchResults;
     }
 
-    dynamic results;
+    // ==========================================================
+    // 🔥 EXTRAÇÃO DE ITENS: tenta múltiplos caminhos
+    // ==========================================================
+    List<dynamic> mixedItems = [];
+    try {
+      // Caminho 1: usar parseMixedContent (padrão)
+      dynamic results;
+      if ((response['contents']).containsKey('tabbedSearchResultsRenderer')) {
+        final tabIndex = scope == null || filter != null ? 0 : scopes.indexOf(scope) + 1;
+        results = response['contents']['tabbedSearchResultsRenderer']['tabs']
+            [tabIndex]['tabRenderer']['content'];
+      } else {
+        results = response['contents'];
+      }
+      mixedItems = parseMixedContent(results);
+      printINFO("✅ parseMixedContent extraiu ${mixedItems.length} itens");
+    } catch (e) {
+      printINFO("⚠️ parseMixedContent falhou: $e");
+    }
 
-    if ((response['contents']).containsKey('tabbedSearchResultsRenderer')) {
-      final tabIndex =
-          scope == null || filter != null ? 0 : scopes.indexOf(scope) + 1;
-      results = response['contents']['tabbedSearchResultsRenderer']['tabs']
-          [tabIndex]['tabRenderer']['content'];
-    } else {
-      results = response['contents'];
+    // Se o parseMixedContent não extraiu nada, tenta extrair manualmente
+    if (mixedItems.isEmpty) {
+      printINFO("🔍 Tentando extração manual de itens...");
+      mixedItems = _extractItemsManually(response);
+      printINFO("✅ Extração manual encontrou ${mixedItems.length} itens");
+    }
+
+    // Se ainda não houver itens, tenta buscar em playlists (fallback)
+    if (mixedItems.isEmpty) {
+      printINFO("⚠️ Nenhum item encontrado. Tentando extrair de playlists...");
+      // Tenta extrair playlists e depois suas faixas
+      final playlists = _extractPlaylistsManually(response);
+      if (playlists.isNotEmpty) {
+        for (var playlist in playlists) {
+          if (playlist is Map && (playlist.containsKey('tracks') || playlist.containsKey('items'))) {
+            final tracks = playlist['tracks'] ?? playlist['items'];
+            if (tracks is List) mixedItems.addAll(tracks);
+          }
+        }
+        printINFO("🎵 Extraídas ${mixedItems.length} músicas de playlists");
+      }
     }
 
     // ==========================================================
-    // 🔥 OBTÉM OS ITENS CRUOS (mixedItems) usando parseMixedContent
-    // ==========================================================
-    final mixedItems = parseMixedContent(results);
-    printINFO("🔍 Itens brutos recebidos: ${mixedItems.length}");
-
-    // ==========================================================
-    // 🔥 CATEGORIZA POR TIPO (e NÃO por artista)
+    // 🔥 CATEGORIZA POR TIPO
     // ==========================================================
     final categorized = _categorizeItems(mixedItems);
 
     // ==========================================================
-    // 🔥 FALLBACK: extrai músicas das playlists se necessário
+    // 🔥 FALLBACK FINAL: se não houver Songs, extrai de playlists
     // ==========================================================
     if (!categorized.containsKey('Songs') || (categorized['Songs'] as List).isEmpty) {
-      printINFO("⚠️ Nenhuma música encontrada. Tentando extrair das playlists...");
+      printINFO("⚠️ Nenhuma música na categorização. Tentando extrair de playlists novamente...");
       final songsFromPlaylists = _extractSongsFromPlaylists(categorized);
       if (songsFromPlaylists.isNotEmpty) {
         categorized['Songs'] = songsFromPlaylists;
@@ -776,23 +808,96 @@ class MusicServices extends getx.GetxService {
     }
 
     // ==========================================================
-    // 🔥 NORMALIZA AS CHAVES (capitalização)
+    // 🔥 NORMALIZA E RETORNA
     // ==========================================================
     final normalized = _normalizeKeys(categorized);
-
-    // ==========================================================
-    // 🔥 RETORNA O RESULTADO
-    // ==========================================================
     searchResults.addAll(normalized);
     printINFO("📋 Categorias finais: ${normalized.keys}");
     return searchResults;
   }
 
   // ============================================================
-  //  FUNÇÕES AUXILIARES DE EXTRAÇÃO E CATEGORIZAÇÃO
+  //  FUNÇÕES AUXILIARES DE EXTRAÇÃO MANUAL
   // ============================================================
 
-  /// Categoriza os itens com base no tipo (resultType ou runtimeType)
+  /// Tenta extrair itens manualmente percorrendo a árvore da resposta
+  List<dynamic> _extractItemsManually(Map<String, dynamic> response) {
+    List<dynamic> items = [];
+    try {
+      // Tenta encontrar qualquer 'musicShelfRenderer' ou 'musicTwoRowItemRenderer'
+      _traverseAndCollect(response, (node) {
+        if (node is Map) {
+          // Verifica se é um item de música
+          if (node.containsKey('musicShelfRenderer')) {
+            final shelf = node['musicShelfRenderer'];
+            if (shelf is Map && shelf.containsKey('contents')) {
+              final contents = shelf['contents'];
+              if (contents is List) {
+                items.addAll(contents);
+              }
+            }
+          }
+          // Verifica se é um item de playlist
+          if (node.containsKey('musicTwoRowItemRenderer')) {
+            final item = node['musicTwoRowItemRenderer'];
+            if (item is Map) {
+              items.add(item);
+            }
+          }
+          // Verifica se é um item de vídeo/música
+          if (node.containsKey('musicResponsiveListItemRenderer')) {
+            final item = node['musicResponsiveListItemRenderer'];
+            if (item is Map) {
+              items.add(item);
+            }
+          }
+        }
+        return true; // continua a travessia
+      });
+    } catch (e) {
+      printINFO("⚠️ Erro na extração manual: $e");
+    }
+    return items;
+  }
+
+  /// Extrai playlists manualmente
+  List<dynamic> _extractPlaylistsManually(Map<String, dynamic> response) {
+    List<dynamic> playlists = [];
+    try {
+      _traverseAndCollect(response, (node) {
+        if (node is Map && node.containsKey('musicTwoRowItemRenderer')) {
+          final item = node['musicTwoRowItemRenderer'];
+          if (item is Map && item.containsKey('playlistId')) {
+            playlists.add(item);
+          }
+        }
+        return true;
+      });
+    } catch (e) {
+      printINFO("⚠️ Erro na extração de playlists: $e");
+    }
+    return playlists;
+  }
+
+  /// Função genérica de travessia recursiva
+  void _traverseAndCollect(dynamic node, bool Function(dynamic) collector) {
+    if (node == null) return;
+    if (!collector(node)) return;
+    if (node is Map) {
+      node.forEach((key, value) {
+        _traverseAndCollect(value, collector);
+      });
+    } else if (node is List) {
+      for (var item in node) {
+        _traverseAndCollect(item, collector);
+      }
+    }
+  }
+
+  // ============================================================
+  //  FUNÇÕES DE CATEGORIZAÇÃO (mesmas de antes, com pequenas melhorias)
+  // ============================================================
+
   Map<String, List<dynamic>> _categorizeItems(List<dynamic> items) {
     final Map<String, List<dynamic>> categories = {
       'Songs': [],
@@ -831,7 +936,7 @@ class MusicServices extends getx.GetxService {
           }
           break;
         default:
-          // Fallback: tenta adivinhar pela estrutura
+          // Fallback: tenta adivinhar
           if (item is Map) {
             if (item.containsKey('tracks') || item.containsKey('items')) {
               categories['Playlists']!.add(item);
@@ -841,21 +946,20 @@ class MusicServices extends getx.GetxService {
               categories['Albums']!.add(item);
             } else if (item.containsKey('title') && item.containsKey('artist')) {
               categories['Songs']!.add(item);
+            } else if (item.containsKey('videoId') && item.containsKey('title')) {
+              categories['Videos']!.add(item);
             }
           }
       }
     }
 
-    // Remove chaves vazias
     categories.removeWhere((key, value) => value.isEmpty);
     return categories;
   }
 
-  /// Determina o tipo do item baseado em campos comuns
   String _getItemType(dynamic item) {
     if (item is! Map) return 'unknown';
 
-    // Prioriza campos explícitos
     if (item.containsKey('resultType')) {
       final type = item['resultType'].toString().toLowerCase();
       if (type.contains('song') || type.contains('track')) return 'song';
@@ -865,7 +969,6 @@ class MusicServices extends getx.GetxService {
       if (type.contains('playlist')) return 'playlist';
     }
 
-    // Verifica por campos típicos
     if (item.containsKey('videoId') && item.containsKey('title')) {
       if (item.containsKey('length') && item['length'] is int && item['length'] < 600) {
         return 'song';
@@ -883,7 +986,6 @@ class MusicServices extends getx.GetxService {
     return 'unknown';
   }
 
-  /// Verifica se a playlist é comunitária
   bool _isCommunityPlaylist(dynamic item) {
     if (item is! Map) return false;
     final title = item['title']?.toString().toLowerCase() ?? '';
@@ -891,7 +993,6 @@ class MusicServices extends getx.GetxService {
     return title.contains('community') || id.contains('community');
   }
 
-  /// Extrai músicas de todas as playlists encontradas
   List<dynamic> _extractSongsFromPlaylists(Map<String, List<dynamic>> categories) {
     final List<dynamic> extracted = [];
     final playlistKeys = ['Playlists', 'Featured playlists', 'Community playlists'];
@@ -911,7 +1012,6 @@ class MusicServices extends getx.GetxService {
     return extracted;
   }
 
-  /// Normaliza as chaves para capitalização consistente
   Map<String, List<dynamic>> _normalizeKeys(Map<String, List<dynamic>> input) {
     final Map<String, List<dynamic>> normalized = {};
     input.forEach((key, value) {
