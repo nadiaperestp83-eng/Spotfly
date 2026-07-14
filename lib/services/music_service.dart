@@ -26,13 +26,13 @@ enum AudioQuality {
 
 class MusicServices extends getx.GetxService {
   // ============================================================
-  //  CONFIGURAÇÃO DO PROXY (fallback)
+  //  CONFIGURAÇÃO DO PROXY
   // ============================================================
   static const String _proxyBaseUrl =
       'https://yt-proxy-music-production.up.railway.app';
 
   // ============================================================
-  //  INSTÂNCIA DO PACOTE YT_FLUTTER_MUSICAPI
+  //  INSTÂNCIA DO PACOTE YT_FLUTTER_MUSICAPI (apenas para busca)
   // ============================================================
   final YtFlutterMusicapi _ytApi = YtFlutterMusicapi();
   bool _ytApiReady = false;
@@ -44,7 +44,7 @@ class MusicServices extends getx.GetxService {
   void onInit() {
     super.onInit();
     _initYtApi();
-    printINFO("🎵 MusicServices inicializado. Proxy fallback: $_proxyBaseUrl");
+    printINFO("🎵 MusicServices usando proxy: $_proxyBaseUrl");
   }
 
   Future<void> _initYtApi() async {
@@ -63,7 +63,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ============================================================
-  //  MÉTODOS PARA O PROXY (FALLBACK)
+  //  MÉTODO PARA REQUISIÇÕES AO PROXY
   // ============================================================
   Future<dynamic> _get(String endpoint, {Map<String, dynamic>? queryParams}) async {
     try {
@@ -97,7 +97,7 @@ class MusicServices extends getx.GetxService {
   // ============================================================
 
   // ------------------------------------------------------------------
-  // 1. SEARCH - tenta YtApi, fallback proxy
+  // 1. SEARCH - tenta YtApi (com searchMusic), fallback proxy
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> search(
     String query, {
@@ -107,12 +107,13 @@ class MusicServices extends getx.GetxService {
     bool ignoreSpelling = false,
     String? filterParams,
   }) async {
-    // Primeiro tenta o YtApi
+    // Primeiro tenta o YtApi (se disponível)
     if (_ytApiReady) {
       try {
         printINFO("🔍 Buscando com YtFlutterMusicapi: '$query'");
-        // O método correto é search(query) - sem argumentos nomeados
-        final results = await _ytApi.search(query);
+        // O método correto é searchMusic(query, limit) - ambos obrigatórios?
+        // A versão anterior aceitava apenas query, mas vamos tentar com limite
+        final results = await _ytApi.searchMusic(query, limit);
         printINFO("📊 YtApi retornou ${results.length} resultados");
         return _categorizeYtResults(results);
       } catch (e) {
@@ -149,34 +150,15 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 2. GET HOME - usa YtApi
+  // 2. GET HOME - usa proxy (pacote não tem getHome)
   // ------------------------------------------------------------------
   Future<dynamic> getHome({int limit = 4}) async {
-    if (!_ytApiReady) {
-      printINFO("⚠️ YtApi não disponível. Retornando lista vazia.");
-      return [];
-    }
+    printINFO("🏠 Buscando Home via proxy...");
     try {
-      printINFO("🏠 Buscando Home do YouTube Music...");
-      final homeData = await _ytApi.getHome();
-      printINFO("📊 Home retornou ${homeData.length} seções");
-      
-      final List<Map<String, dynamic>> parsedHome = [];
-      for (var section in homeData) {
-        try {
-          // Assume que cada seção tem 'title' e 'items' (lista de Music)
-          final items = (section.items as List).map((item) => item.toJson()).toList();
-          if (items.isNotEmpty) {
-            parsedHome.add({
-              'title': section.title,
-              'contents': items,
-            });
-          }
-        } catch (e) {
-          printERROR("Erro ao parsear seção: $e");
-        }
-      }
-      return parsedHome;
+      // O proxy pode não ter /home, então retornamos vazio com aviso
+      // Se quiser, pode implementar um endpoint /home no proxy
+      printINFO("⚠️ getHome não implementado no proxy. Retornando lista vazia.");
+      return [];
     } catch (e) {
       printERROR("❌ Erro no getHome: $e");
       return [];
@@ -184,32 +166,16 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 3. GET CHARTS - usa YtApi com search
+  // 3. GET CHARTS - usa proxy
   // ------------------------------------------------------------------
   Future<List<Map<String, dynamic>>> getCharts(String category,
       {String? countryCode}) async {
-    if (!_ytApiReady) {
-      printINFO("⚠️ YtApi não disponível. Retornando vazio.");
-      return [];
-    }
-    try {
-      printINFO("📈 Buscando charts: $category");
-      final results = await _ytApi.search(category);
-      if (results.isEmpty) return [];
-      
-      final chartSection = {
-        'title': category,
-        'contents': results.map((e) => e.toJson()).toList(),
-      };
-      return [chartSection];
-    } catch (e) {
-      printERROR("❌ Erro no getCharts: $e");
-      return [];
-    }
+    printINFO("⚠️ getCharts não suportado pelo proxy. Retornando vazio.");
+    return [];
   }
 
   // ------------------------------------------------------------------
-  // 4. GET WATCH PLAYLIST - usa YtApi
+  // 4. GET WATCH PLAYLIST - usa proxy
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getWatchPlaylist({
     String videoId = "",
@@ -221,44 +187,8 @@ class MusicServices extends getx.GetxService {
     bool onlyRelated = false,
   }) async {
     try {
-      if (videoId.isNotEmpty && _ytApiReady) {
-        printINFO("🎵 Obtendo música: $videoId via YtApi");
-        final song = await _ytApi.getSong(videoId);
-        final track = _extractTrackFromYtSong(song);
-        return {
-          'tracks': [track],
-          'playlistId': playlistId ?? '',
-          'lyrics': null,
-          'related': null,
-          'additionalParamsForNext': null,
-        };
-      } else if (playlistId != null && _ytApiReady) {
-        printINFO("📋 Obtendo playlist: $playlistId via YtApi");
-        final playlist = await _ytApi.getPlaylist(playlistId);
-        final tracks = playlist.songs.map((e) => _extractTrackFromYtSong(e)).toList();
-        return {
-          'tracks': tracks,
-          'playlistId': playlistId,
-          'lyrics': null,
-          'related': null,
-          'additionalParamsForNext': null,
-        };
-      }
-      return {'tracks': [], 'playlistId': '', 'lyrics': null, 'related': null, 'additionalParamsForNext': null};
-    } catch (e) {
-      printERROR("Erro no getWatchPlaylist via YtApi: $e");
-      // Fallback para proxy
-      try {
-        return await _getWatchPlaylistProxy(videoId, playlistId);
-      } catch (_) {
-        return {'tracks': [], 'playlistId': '', 'lyrics': null, 'related': null, 'additionalParamsForNext': null};
-      }
-    }
-  }
-
-  Future<Map<String, dynamic>> _getWatchPlaylistProxy(String videoId, String? playlistId) async {
-    try {
       if (videoId.isNotEmpty) {
+        printINFO("🎵 Obtendo música via proxy: $videoId");
         final data = await _get('/get_song', queryParams: {'videoId': videoId});
         final track = _extractTrackFromSong(data);
         return {
@@ -269,6 +199,7 @@ class MusicServices extends getx.GetxService {
           'additionalParamsForNext': null,
         };
       } else if (playlistId != null) {
+        printINFO("📋 Obtendo playlist via proxy: $playlistId");
         final data = await _get('/get_playlist', queryParams: {'playlistId': playlistId});
         final tracks = data['tracks'] ?? [];
         return {
@@ -279,12 +210,15 @@ class MusicServices extends getx.GetxService {
           'additionalParamsForNext': null,
         };
       }
-    } catch (_) {}
-    return {'tracks': [], 'playlistId': '', 'lyrics': null, 'related': null, 'additionalParamsForNext': null};
+      return {'tracks': [], 'playlistId': '', 'lyrics': null, 'related': null, 'additionalParamsForNext': null};
+    } catch (e) {
+      printERROR("Erro no getWatchPlaylist: $e");
+      return {'tracks': [], 'playlistId': '', 'lyrics': null, 'related': null, 'additionalParamsForNext': null};
+    }
   }
 
   // ------------------------------------------------------------------
-  // 5. GET PLAYLIST OR ALBUM SONGS - usa YtApi
+  // 5. GET PLAYLIST OR ALBUM SONGS - usa proxy
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getPlaylistOrAlbumSongs({
     String? playlistId,
@@ -294,64 +228,27 @@ class MusicServices extends getx.GetxService {
     int suggestionsLimit = 0,
   }) async {
     try {
-      if (playlistId != null && _ytApiReady) {
-        printINFO("📋 Obtendo playlist: $playlistId via YtApi");
-        final playlist = await _ytApi.getPlaylist(playlistId);
-        return _formatYtPlaylist(playlist);
-      } else if (albumId != null && _ytApiReady) {
-        printINFO("📀 Obtendo álbum: $albumId via YtApi");
-        final album = await _ytApi.getAlbum(albumId);
-        return _formatYtAlbum(album);
-      }
-      return {};
-    } catch (e) {
-      printERROR("Erro no getPlaylistOrAlbumSongs via YtApi: $e");
-      // Fallback para proxy
-      try {
-        return await _getPlaylistOrAlbumProxy(playlistId, albumId);
-      } catch (_) {
-        return {};
-      }
-    }
-  }
-
-  Future<Map<String, dynamic>> _getPlaylistOrAlbumProxy(String? playlistId, String? albumId) async {
-    try {
       if (playlistId != null) {
+        printINFO("📋 Obtendo playlist via proxy: $playlistId");
         final data = await _get('/get_playlist', queryParams: {'playlistId': playlistId});
         return _formatPlaylistData(data);
       } else if (albumId != null) {
+        printINFO("📀 Obtendo álbum via proxy: $albumId");
         final data = await _get('/get_album', queryParams: {'browseId': albumId});
         return _formatAlbumData(data);
       }
-    } catch (_) {}
-    return {};
+      return {};
+    } catch (e) {
+      printERROR("Erro no getPlaylistOrAlbumSongs: $e");
+      return {};
+    }
   }
 
   // ------------------------------------------------------------------
-  // 6. GET ARTIST - usa YtApi
+  // 6. GET ARTIST - usa proxy (ou stub)
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getArtist(String artistId) async {
-    if (_ytApiReady) {
-      try {
-        printINFO("🎤 Obtendo artista: $artistId via YtApi");
-        final artist = await _ytApi.getArtist(artistId);
-        return {
-          'id': artistId,
-          'name': artist.name,
-          'thumbnails': artist.thumbnails.isNotEmpty
-              ? artist.thumbnails.map((e) => {'url': e.url}).toList()
-              : [],
-          'description': artist.description ?? '',
-          'subscribers': artist.subscribers?.toString() ?? '0',
-          'radioId': '',
-        };
-      } catch (e) {
-        printERROR("Erro no getArtist via YtApi: $e");
-      }
-    }
-    // Fallback stub
-    printINFO("⚠️ Retornando stub para artista.");
+    printINFO("⚠️ getArtist não implementado no proxy. Retornando stub.");
     return {
       'id': artistId,
       'name': 'Artist $artistId',
@@ -363,7 +260,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 7. GET ARTIST RELATED CONTENT - usa YtApi com search
+  // 7. GET ARTIST RELATED CONTENT - stub
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getArtistRelatedContent(
     String artistId,
@@ -371,20 +268,11 @@ class MusicServices extends getx.GetxService {
     int limit = 10,
     Map<String, dynamic>? additionalParams,
   }) async {
-    if (!_ytApiReady) {
-      printINFO("⚠️ YtApi não disponível. Retornando vazio.");
-      return {'contents': [], 'additionalParams': {}};
-    }
-    try {
-      final results = await _ytApi.search('$artistId $tabName');
-      return {
-        'contents': results.map((e) => e.toJson()).toList(),
-        'additionalParams': {},
-      };
-    } catch (e) {
-      printERROR("Erro no getArtistRelatedContent: $e");
-      return {'contents': [], 'additionalParams': {}};
-    }
+    printINFO("⚠️ getArtistRelatedContent não implementado. Retornando vazio.");
+    return {
+      'contents': [],
+      'additionalParams': {},
+    };
   }
 
   // Método com typo para compatibilidade
@@ -399,7 +287,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 8. GET SEARCH CONTINUATION - não suportado
+  // 8. GET SEARCH CONTINUATION - stub
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getSearchContinuation(
     Map<String, dynamic> continuationParams, {
@@ -410,16 +298,9 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 9. GET SONG YEAR - via YtApi
+  // 9. GET SONG YEAR - via proxy
   // ------------------------------------------------------------------
   Future<String> getSongYear(String songId) async {
-    if (_ytApiReady) {
-      try {
-        final song = await _ytApi.getSong(songId);
-        return song.year?.toString() ?? DateTime.now().year.toString();
-      } catch (_) {}
-    }
-    // Fallback
     try {
       final data = await _get('/get_song', queryParams: {'videoId': songId});
       final year = data['year'] ?? data['publishedDate'] ?? '';
@@ -432,17 +313,9 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 10. GET SONG WITH ID - via YtApi
+  // 10. GET SONG WITH ID - via proxy
   // ------------------------------------------------------------------
   Future<List> getSongWithId(String songId) async {
-    if (_ytApiReady) {
-      try {
-        final song = await _ytApi.getSong(songId);
-        final track = _extractTrackFromYtSong(song);
-        return [true, [track]];
-      } catch (_) {}
-    }
-    // Fallback proxy
     try {
       final data = await _get('/get_song', queryParams: {'videoId': songId});
       if (data.isNotEmpty) {
@@ -481,7 +354,7 @@ class MusicServices extends getx.GetxService {
   //  FUNÇÕES AUXILIARES DE CONVERSÃO
   // ============================================================
 
-  // --- Conversão dos resultados do proxy ---
+  // --- Proxy results ---
   Map<String, dynamic> _categorizeSearchResults(List<dynamic> results) {
     final categories = {
       'Songs': [],
@@ -548,7 +421,7 @@ class MusicServices extends getx.GetxService {
     };
   }
 
-  // --- Conversão dos resultados do YtFlutterMusicapi ---
+  // --- YtApi results ---
   Map<String, dynamic> _categorizeYtResults(List<dynamic> results) {
     final categories = {
       'Songs': [],
@@ -661,58 +534,7 @@ class MusicServices extends getx.GetxService {
     };
   }
 
-  Map<String, dynamic> _extractTrackFromYtSong(dynamic song) {
-    try {
-      final json = song.toJson();
-      return _convertYtSong(json);
-    } catch (e) {
-      return {};
-    }
-  }
-
-  Map<String, dynamic> _formatYtPlaylist(dynamic playlist) {
-    try {
-      final json = playlist.toJson();
-      return {
-        'id': json['id'] ?? '',
-        'title': json['title'] ?? '',
-        'thumbnails': json['thumbnails'] ?? [],
-        'description': json['description'] ?? '',
-        'trackCount': json['trackCount'] ?? 0,
-        'duration': json['duration'] ?? '',
-        'tracks': json['songs']?.map((e) => _extractTrackFromYtSong(e)).toList() ?? [],
-        'author': json['author'] ?? {},
-        'year': json['year'] ?? '',
-        'duration_seconds': 0,
-      };
-    } catch (e) {
-      return {};
-    }
-  }
-
-  Map<String, dynamic> _formatYtAlbum(dynamic album) {
-    try {
-      final json = album.toJson();
-      return {
-        'id': json['id'] ?? '',
-        'title': json['title'] ?? '',
-        'thumbnails': json['thumbnails'] ?? [],
-        'description': json['description'] ?? '',
-        'trackCount': json['trackCount'] ?? 0,
-        'tracks': json['songs']?.map((e) => _extractTrackFromYtSong(e)).toList() ?? [],
-        'artists': json['artists'] ?? [],
-        'year': json['year'] ?? '',
-        'duration_seconds': 0,
-        'other_versions': [],
-      };
-    } catch (e) {
-      return {};
-    }
-  }
-
-  // ------------------------------------------------------------------
-  //  FUNÇÕES DE FORMATAÇÃO (para compatibilidade com métodos antigos)
-  // ------------------------------------------------------------------
+  // --- Formatação para compatibilidade ---
   Map<String, dynamic> _formatPlaylistData(Map<String, dynamic> data) {
     return {
       'id': data['id'] ?? '',
