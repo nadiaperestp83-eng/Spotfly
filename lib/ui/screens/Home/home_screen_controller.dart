@@ -87,6 +87,20 @@ class HomeScreenController extends GetxController {
     }
   }
 
+  // ========== CORREÇÃO PRINCIPAL ==========
+  // Função auxiliar para extrair com segurança uma lista de MediaItem
+  // a partir de uma lista que pode conter outros tipos (Playlist, Album, etc.)
+  List<MediaItem> _extractMediaItems(dynamic contents) {
+    if (contents == null) return [];
+    final list = contents as List;
+    // Filtra apenas os itens que já são MediaItem
+    final mediaItems = list.whereType<MediaItem>().toList();
+    // Se não houver nenhum MediaItem, tenta converter de outros tipos?
+    // Por ora, retorna apenas os que já são MediaItem.
+    // Você pode adicionar lógica para converter Playlist/Album se necessário.
+    return mediaItems;
+  }
+
   Future<void> loadContentFromNetwork({bool silent = false}) async {
     final box = Hive.box("AppPrefs");
     String contentType = box.get("discoverContentType") ?? "QP";
@@ -94,10 +108,6 @@ class HomeScreenController extends GetxController {
     networkError.value = false;
     try {
       List middleContentTemp = [];
-      // Antes: final homeContentListMap = await _musicServices.getHome(limit: ...);
-      // Agora: passa pelo Orquestrador (fallback YT -> Piped -> Jamendo),
-      // que devolve os dados no MESMO formato de sempre — o resto desta
-      // função não muda.
       final homeContentListMap = await appProviderContainer
           .read(homeNotifierProvider.notifier)
           .fetchHomeContent(
@@ -108,14 +118,12 @@ class HomeScreenController extends GetxController {
         final index = homeContentListMap
             .indexWhere((element) => element['title'] == "Trending");
         if (index != -1 && index != 0) {
-          quickPicks.value = QuickPicks(
-              List<MediaItem>.from(homeContentListMap[index]["contents"]),
-              title: "Trending");
+          // Usa a função segura
+          final mediaItems = _extractMediaItems(homeContentListMap[index]["contents"]);
+          if (mediaItems.isNotEmpty) {
+            quickPicks.value = QuickPicks(mediaItems, title: "Trending");
+          }
         } else if (index == -1) {
-          // Antes: _musicServices.getCharts(contentType) direto.
-          // Agora: passa pelo Orquestrador (API interna do YT -> fallback
-          // pro que estiver em Hive.box("homeScreenData")). Formato de
-          // retorno idêntico ao de sempre.
           List charts = await appProviderContainer
               .read(homeNotifierProvider.notifier)
               .getCharts();
@@ -123,10 +131,11 @@ class HomeScreenController extends GetxController {
               element['title'] ==
               (contentType == "TMV" ? "Top Music Videos" : "Trending"));
           if (index != -1) {
-            quickPicks.value = QuickPicks(
-                List<MediaItem>.from(charts[index]["contents"]),
-                title: charts[index]['title']);
-            middleContentTemp.addAll(charts);
+            final mediaItems = _extractMediaItems(charts[index]["contents"]);
+            if (mediaItems.isNotEmpty) {
+              quickPicks.value = QuickPicks(mediaItems, title: charts[index]['title']);
+              middleContentTemp.addAll(charts);
+            }
           }
         }
       } else if (contentType == "TMV") {
@@ -134,13 +143,11 @@ class HomeScreenController extends GetxController {
             .indexWhere((element) => element['title'] == "Top music videos");
         if (index != -1 && index != 0) {
           final con = homeContentListMap.removeAt(index);
-          quickPicks.value = QuickPicks(List<MediaItem>.from(con["contents"]),
-              title: con["title"]);
+          final mediaItems = _extractMediaItems(con["contents"]);
+          if (mediaItems.isNotEmpty) {
+            quickPicks.value = QuickPicks(mediaItems, title: con["title"]);
+          }
         } else if (index == -1) {
-          // Antes: _musicServices.getCharts(contentType) direto.
-          // Agora: passa pelo Orquestrador (API interna do YT -> fallback
-          // pro que estiver em Hive.box("homeScreenData")). Formato de
-          // retorno idêntico ao de sempre.
           List charts = await appProviderContainer
               .read(homeNotifierProvider.notifier)
               .getCharts();
@@ -148,10 +155,11 @@ class HomeScreenController extends GetxController {
               element['title'] ==
               (contentType == "TMV" ? "Top Music Videos" : "Trending"));
           if (index != -1) {
-            quickPicks.value = QuickPicks(
-                List<MediaItem>.from(charts[index]["contents"]),
-                title: charts[index]["title"]);
-            middleContentTemp.addAll(charts);
+            final mediaItems = _extractMediaItems(charts[index]["contents"]);
+            if (mediaItems.isNotEmpty) {
+              quickPicks.value = QuickPicks(mediaItems, title: charts[index]["title"]);
+              middleContentTemp.addAll(charts);
+            }
           }
         }
       } else if (contentType == "BOLI") {
@@ -161,8 +169,10 @@ class HomeScreenController extends GetxController {
             final rel = (await _musicServices.getContentRelatedToSong(
                 songId, getContentHlCode()));
             final con = rel.removeAt(0);
-            quickPicks.value =
-                QuickPicks(List<MediaItem>.from(con["contents"]));
+            final mediaItems = _extractMediaItems(con["contents"]);
+            if (mediaItems.isNotEmpty) {
+              quickPicks.value = QuickPicks(mediaItems);
+            }
             middleContentTemp.addAll(rel);
           }
         } catch (e) {
@@ -176,19 +186,16 @@ class HomeScreenController extends GetxController {
             .indexWhere((element) => element['title'] == "Quick picks");
         if (index != -1) {
           final con = homeContentListMap.removeAt(index);
-          quickPicks.value = QuickPicks(List<MediaItem>.from(con["contents"]),
-              title: "Quick picks");
+          final mediaItems = _extractMediaItems(con["contents"]);
+          if (mediaItems.isNotEmpty) {
+            quickPicks.value = QuickPicks(mediaItems, title: "Quick picks");
+          }
         } else if (homeContentListMap.isNotEmpty) {
-          // Antes: removeAt(index) era chamado sem checar se index == -1.
-          // Fontes de fallback (Piped/Jamendo) não nomeiam o conteúdo
-          // "Quick picks" — o Piped usa "Em alta (Piped)", por exemplo —
-          // então indexWhere nunca achava e removeAt(-1) explodia com
-          // RangeError. Como essas fontes só devolvem UMA entrada de
-          // conteúdo pra Home, usamos essa entrada diretamente, com
-          // qualquer título que ela já tenha.
           final con = homeContentListMap.removeAt(0);
-          quickPicks.value = QuickPicks(List<MediaItem>.from(con["contents"]),
-              title: con["title"] ?? "Quick picks");
+          final mediaItems = _extractMediaItems(con["contents"]);
+          if (mediaItems.isNotEmpty) {
+            quickPicks.value = QuickPicks(mediaItems, title: con["title"] ?? "Quick picks");
+          }
         }
       }
 
@@ -197,26 +204,15 @@ class HomeScreenController extends GetxController {
 
       isContentFetched.value = true;
 
-      // set home content last update time
       cachedHomeScreenData(updateAll: true);
       await Hive.box("AppPrefs")
           .put("homeScreenDataTime", DateTime.now().millisecondsSinceEpoch);
-      // ignore: unused_catch_stack
     } catch (e, st) {
-      // Antes: só capturava "on NetworkError", que é uma classe específica
-      // da MusicServices antiga. Como o Orquestrador (SearchCoordinator)
-      // pode propagar QUALQUER tipo de erro vindo de qualquer fonte
-      // (ex: StateError do PipedSource, TimeoutException, etc.) quando
-      // todas as fontes falham, esse catch precisa ser genérico — senão
-      // a exceção escapa sem ser tratada, isContentFetched nunca vira
-      // true, e a Home fica presa no shimmer pra sempre.
       printERROR("Home Content not loaded due to: $e");
       printERROR(st.toString());
       await Future.delayed(const Duration(seconds: 1));
       networkError.value = !silent;
       if (!silent) {
-        // Exibe o erro real na tela (snackbar) pra permitir diagnóstico
-        // direto no celular, sem precisar de logcat/GitHub Actions.
         Get.snackbar(
           'Erro ao carregar a Home',
           e.toString(),
@@ -253,26 +249,28 @@ class HomeScreenController extends GetxController {
     return contentTemp;
   }
 
+  // ========== CORREÇÃO NO changeDiscoverContent ==========
   Future<void> changeDiscoverContent(dynamic val, {String? songId}) async {
     QuickPicks? quickPicks_;
     if (val == 'QP') {
       final homeContentListMap = await _musicServices.getHome(limit: 3);
-      quickPicks_ = QuickPicks(
-          List<MediaItem>.from(homeContentListMap[0]["contents"]),
-          title: homeContentListMap[0]["title"]);
+      final mediaItems = _extractMediaItems(homeContentListMap[0]["contents"]);
+      if (mediaItems.isNotEmpty) {
+        quickPicks_ = QuickPicks(mediaItems, title: homeContentListMap[0]["title"]);
+      }
     } else if (val == "TMV" || val == 'TR') {
       try {
-        // Antes: _musicServices.getCharts(val) direto.
-        // Agora: passa pelo Orquestrador (API interna do YT -> fallback
-        // pro que estiver em Hive.box("homeScreenData")).
         final charts =
             await appProviderContainer.read(homeNotifierProvider.notifier).getCharts();
         final index = charts.indexWhere((element) =>
             element['title'] ==
             (val == "TMV" ? "Top Music Videos" : "Trending"));
-        quickPicks_ = QuickPicks(
-            List<MediaItem>.from(charts[index]["contents"]),
-            title: charts[index]["title"]);
+        if (index != -1) {
+          final mediaItems = _extractMediaItems(charts[index]["contents"]);
+          if (mediaItems.isNotEmpty) {
+            quickPicks_ = QuickPicks(mediaItems, title: charts[index]["title"]);
+          }
+        }
       } catch (e) {
         printERROR(
             "Seems ${val == "TMV" ? "Top music videos" : "Trending songs"} currently not available!");
@@ -285,8 +283,10 @@ class HomeScreenController extends GetxController {
               songId, getContentHlCode());
           middleContent.value = _setContentList(value);
           if (value.isNotEmpty && (value[0]['title']).contains("like")) {
-            quickPicks_ =
-                QuickPicks(List<MediaItem>.from(value[0]["contents"]));
+            final mediaItems = _extractMediaItems(value[0]["contents"]);
+            if (mediaItems.isNotEmpty) {
+              quickPicks_ = QuickPicks(mediaItems);
+            }
             Hive.box("AppPrefs").put("recentSongId", songId);
           }
           // ignore: empty_catches
@@ -297,7 +297,6 @@ class HomeScreenController extends GetxController {
 
     quickPicks.value = quickPicks_;
 
-    // set home content last update time
     cachedHomeScreenData(updateQuickPicksNMiddleContent: true);
     await Hive.box("AppPrefs")
         .put("homeScreenDataTime", DateTime.now().millisecondsSinceEpoch);
