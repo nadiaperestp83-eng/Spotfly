@@ -27,15 +27,38 @@ class SearchResultScreenController extends GetxController
 
   static const Map<String, String> keyMapping = {
     'Tracks': 'Songs',
+    'Track': 'Songs',
+    'Song': 'Songs',
     'Songs': 'Songs',
+    'Video': 'Videos',
     'Videos': 'Videos',
+    'Album': 'Albums',
     'Albums': 'Albums',
+    'Artist': 'Artists',
     'Artists': 'Artists',
+    'Channel': 'Artists',
     'Channels': 'Artists',
+    'Featured playlist': 'Featured playlists',
     'Featured playlists': 'Featured playlists',
+    'Community playlist': 'Community playlists',
     'Community playlists': 'Community playlists',
+    'Playlist': 'Featured playlists',
     'Playlists': 'Featured playlists',
   };
+
+  /// Normaliza uma chave de categoria vinda da fonte (YT Music/Piped/
+  /// Jamendo) para o nome padrão usado pela UI. Além do keyMapping direto,
+  /// tenta um fallback case-insensitive antes de desistir e manter a chave
+  /// original — assim nenhuma categoria nova/renomeada é silenciosamente
+  /// descartada.
+  String _normalizeKey(String rawKey) {
+    if (keyMapping.containsKey(rawKey)) return keyMapping[rawKey]!;
+    final lower = rawKey.trim().toLowerCase();
+    for (final entry in keyMapping.entries) {
+      if (entry.key.toLowerCase() == lower) return entry.value;
+    }
+    return rawKey;
+  }
 
   @override
   void onReady() {
@@ -126,11 +149,22 @@ class SearchResultScreenController extends GetxController
 
     final result = await appProviderContainer.read(searchNotifierProvider.notifier).search(args);
 
-    // Normalização sem descartar chaves vazias
+    // Guarda as chaves cruas retornadas pela fonte, antes de qualquer
+    // normalização, só para fins de debug (dialog abaixo).
+    final rawKeys = result.categories.keys.toList();
+
+    // Normalização sem descartar chaves vazias, tolerante a variações de
+    // nome (singular/plural, maiúsculas/minúsculas) via _normalizeKey.
     Map<String, dynamic> normalizedMap = {};
     result.categories.forEach((key, value) {
-      final normalizedKey = keyMapping[key] ?? key;
-      if (normalizedMap.containsKey(normalizedKey) && value is List) {
+      // 'searchEndpoint' é metadado interno (params dos chips), não uma
+      // categoria de conteúdo — não deve virar aba nem contar como "lista".
+      if (key == 'searchEndpoint') {
+        normalizedMap[key] = value;
+        return;
+      }
+      final normalizedKey = _normalizeKey(key);
+      if (normalizedMap.containsKey(normalizedKey) && value is List && normalizedMap[normalizedKey] is List) {
         normalizedMap[normalizedKey] = [...normalizedMap[normalizedKey], ...value];
       } else {
         normalizedMap[normalizedKey] = value;
@@ -139,13 +173,17 @@ class SearchResultScreenController extends GetxController
 
     // Lista de categorias esperadas
     final List<String> targetKeys = ["Songs", "Videos", "Albums", "Artists", "Featured playlists", "Community playlists"];
-    
+
     // Adiciona as chaves que existem no resultado
     railItems.value = targetKeys.where((key) => normalizedMap.containsKey(key)).toList();
 
-    // Se nenhuma das chaves esperadas foi encontrada, adiciona o que vier de listas
+    // Se nenhuma das chaves esperadas foi encontrada, adiciona o que vier de
+    // listas (fallback: mostra qualquer categoria com conteúdo, mesmo que o
+    // nome não seja um dos esperados, em vez de sumir com o resultado).
     if (railItems.isEmpty) {
-      railItems.value = normalizedMap.keys.where((key) => normalizedMap[key] is List).toList();
+      railItems.value = normalizedMap.keys
+          .where((key) => key != 'searchEndpoint' && normalizedMap[key] is List)
+          .toList();
     }
 
     resultContent.value = normalizedMap;
@@ -160,6 +198,30 @@ class SearchResultScreenController extends GetxController
     }
 
     isResultContentFetced.value = true;
+
+    _maybeShowDebugCategoriesDialog(rawKeys, normalizedMap);
+  }
+
+  /// Debug UI: se a busca não gerou nenhuma aba, ou se Songs/Videos vieram
+  /// vazios, mostra um diálogo com as chaves exatas recebidas da fonte.
+  /// Ajuda a diagnosticar rapidamente quando a API muda nomes de categoria
+  /// sem precisar olhar log.
+  void _maybeShowDebugCategoriesDialog(
+      List<String> rawKeys, Map<String, dynamic> normalizedMap) {
+    final songsEmpty = (normalizedMap['Songs'] is! List) || (normalizedMap['Songs'] as List).isEmpty;
+    final videosEmpty = (normalizedMap['Videos'] is! List) || (normalizedMap['Videos'] as List).isEmpty;
+
+    if (railItems.isEmpty || songsEmpty || videosEmpty) {
+      final keysDescription = rawKeys.isEmpty ? '(nenhuma)' : rawKeys.join(', ');
+      Get.defaultDialog(
+        title: 'Debug: categorias da busca',
+        middleText:
+            'O servidor retornou as seguintes categorias: $keysDescription\n\n'
+            'Abas exibidas: ${railItems.isEmpty ? '(nenhuma)' : railItems.join(', ')}',
+        textConfirm: 'OK',
+        onConfirm: () => Get.back(),
+      );
+    }
   }
 
   void onSort(SortType sortType, bool isAscending, String title) {
