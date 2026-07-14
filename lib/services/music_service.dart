@@ -13,6 +13,16 @@ import 'constant.dart';
 import 'continuations.dart';
 import 'nav_parser.dart';
 
+// ============================================================
+//  DEFINIÇÃO DA EXCEÇÃO NetworkError (se não existir em outro lugar)
+// ============================================================
+class NetworkError implements Exception {
+  final String message;
+  NetworkError([this.message = "Network error occurred"]);
+  @override
+  String toString() => message;
+}
+
 enum AudioQuality {
   Low,
   High,
@@ -547,6 +557,119 @@ class MusicServices extends getx.GetxService {
   }
 
   // ============================================================
+  //  MÉTODOS QUE ESTAVAM FALTANDO (restaurados)
+  // ============================================================
+
+  /// Obtém o ano de uma música (stub)
+  Future<String> getSongYear(String songId) async {
+    // Implementação simples: tenta extrair do player ou retorna ano atual
+    try {
+      final data = Map.of(_context);
+      data['videoId'] = songId;
+      final response = await _sendRequest("player", data);
+      final year = nav(response.data, [
+        'microformat',
+        'microformatDataRenderer',
+        'publishedDate'
+      ]);
+      if (year != null && year is String) {
+        // Tenta extrair o ano
+        final match = RegExp(r'\d{4}').firstMatch(year);
+        return match?.group(0) ?? DateTime.now().year.toString();
+      }
+    } catch (_) {}
+    return DateTime.now().year.toString();
+  }
+
+  /// Obtém informações de um artista (stub)
+  Future<Map<String, dynamic>> getArtist(String artistId) async {
+    // Implementação básica: busca o artista
+    final data = Map.of(_context);
+    data['browseId'] = artistId;
+    try {
+      final response = await _sendRequest("browse", data);
+      // Parse básico do header
+      final header = nav(response.data, [
+        'header',
+        'musicImmersiveHeaderRenderer'
+      ]) ??
+          nav(response.data, [
+            'header',
+            'musicArtistHeaderRenderer'
+          ]);
+      if (header != null) {
+        return {
+          'id': artistId,
+          'name': nav(header, title_text) ?? 'Unknown Artist',
+          'thumbnails': nav(header, thumnail_cropped) ?? [],
+          'description': nav(header, description) ?? '',
+        };
+      }
+    } catch (_) {}
+    return {
+      'id': artistId,
+      'name': 'Artist $artistId',
+      'thumbnails': [],
+      'description': '',
+    };
+  }
+
+  /// Obtém conteúdo relacionado a um artista (stub)
+  Future<List<dynamic>> getArtistRealtedContent(
+      String artistId, String tabName, {int limit = 10}) async {
+    // Implementação básica: retorna lista vazia ou busca algo
+    try {
+      final data = Map.of(_context);
+      data['browseId'] = artistId;
+      data['params'] = _getArtistTabParams(tabName);
+      final response = await _sendRequest("browse", data);
+      final results = nav(response.data, [
+        'contents',
+        'twoColumnBrowseResultsRenderer',
+        'secondaryContents',
+        'sectionListRenderer',
+        'contents',
+        0,
+        'musicShelfRenderer',
+        'contents'
+      ]);
+      if (results != null && results is List) {
+        return results;
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  String _getArtistTabParams(String tabName) {
+    // Mapeamento básico
+    switch (tabName.toLowerCase()) {
+      case 'songs':
+        return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
+      case 'albums':
+        return 'EgWKAQIIAWoKEAoQCRADEAA%3D'; // ajustar
+      case 'playlists':
+        return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
+      default:
+        return '';
+    }
+  }
+
+  /// Obtém continuação da busca (scroll infinito) - usado pelo SearchCoordinator
+  Future<Map<String, dynamic>> getSearchContinuation(
+      Map<String, dynamic> continuationParams,
+      {int limit = 10}) async {
+    // Implementação simples: chama a API com os parâmetros de continuação
+    try {
+      final data = Map.of(_context);
+      data.addAll(continuationParams);
+      final response = await _sendRequest("search", data);
+      return response.data;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ============================================================
   //  🚀 MÉTODO SEARCH REFATORADO
   // ============================================================
   Future<Map<String, dynamic>> search(String query,
@@ -611,9 +734,9 @@ class MusicServices extends getx.GetxService {
     }
 
     // ==========================================================
-    // 🔥 OBTÉM OS ITENS CRUOS (mixedItems)
+    // 🔥 OBTÉM OS ITENS CRUOS (mixedItems) usando parseMixedContent
     // ==========================================================
-    final mixedItems = _extractMixedItems(results);
+    final mixedItems = parseMixedContent(results);
     printINFO("🔍 Itens brutos recebidos: ${mixedItems.length}");
 
     // ==========================================================
@@ -650,27 +773,6 @@ class MusicServices extends getx.GetxService {
   //  FUNÇÕES AUXILIARES DE EXTRAÇÃO E CATEGORIZAÇÃO
   // ============================================================
 
-  /// Extrai todos os itens (músicas, vídeos, álbuns, artistas, playlists)
-  /// da resposta da API. Essa função deve ser adaptada conforme a estrutura real
-  /// dos dados retornados por `parseMixedContent` ou similar.
-  List<dynamic> _extractMixedItems(dynamic results) {
-    // Aqui você deve usar a função que já existe no seu código para extrair
-    // os itens mistos. Exemplo: se você tem `parseMixedContent`, use-a.
-    // Como o código atual não mostra `parseMixedContent`, estou assumindo
-    // que você tem uma função que retorna uma lista de itens.
-    // Se você já tem um método que extrai os itens, substitua esta linha:
-    // return parseMixedContent(results);
-    // Caso contrário, você precisará implementar a extração.
-    // Vou deixar um placeholder que retorna lista vazia.
-    // Você deve substituir pela chamada real.
-    if (results is List) return results;
-    if (results is Map && results.containsKey('contents')) {
-      // Exemplo: muitos resultados vêm em 'contents'
-      return results['contents'] as List? ?? [];
-    }
-    return [];
-  }
-
   /// Categoriza os itens com base no tipo (resultType ou runtimeType)
   Map<String, List<dynamic>> _categorizeItems(List<dynamic> items) {
     final Map<String, List<dynamic>> categories = {
@@ -703,7 +805,6 @@ class MusicServices extends getx.GetxService {
           categories['Artists']!.add(item);
           break;
         case 'playlist':
-          // Verifica se é comunitária ou em destaque
           if (_isCommunityPlaylist(item)) {
             categories['Community playlists']!.add(item);
           } else {
@@ -711,26 +812,22 @@ class MusicServices extends getx.GetxService {
           }
           break;
         default:
-          // Se não souber o tipo, tenta adivinhar pela estrutura
+          // Fallback: tenta adivinhar pela estrutura
           if (item is Map) {
             if (item.containsKey('tracks') || item.containsKey('items')) {
-              // Pode ser uma playlist
               categories['Playlists']!.add(item);
             } else if (item.containsKey('artist') || item.containsKey('channel')) {
               categories['Artists']!.add(item);
-            } else if (item.containsKey('album') || item.containsKey('title') && item.containsKey('year')) {
+            } else if (item.containsKey('album') || (item.containsKey('title') && item.containsKey('year'))) {
               categories['Albums']!.add(item);
-            } else {
-              // Fallback: coloca em Songs se tiver 'title' e 'artist'
-              if (item.containsKey('title') && item.containsKey('artist')) {
-                categories['Songs']!.add(item);
-              }
+            } else if (item.containsKey('title') && item.containsKey('artist')) {
+              categories['Songs']!.add(item);
             }
           }
       }
     }
 
-    // Remove chaves vazias para não poluir
+    // Remove chaves vazias
     categories.removeWhere((key, value) => value.isEmpty);
     return categories;
   }
@@ -751,14 +848,12 @@ class MusicServices extends getx.GetxService {
 
     // Verifica por campos típicos
     if (item.containsKey('videoId') && item.containsKey('title')) {
-      // Pode ser música ou vídeo. Se tiver 'length' curto, assume música.
       if (item.containsKey('length') && item['length'] is int && item['length'] < 600) {
         return 'song';
       }
       return 'video';
     }
     if (item.containsKey('browseId') && item.containsKey('title')) {
-      // Pode ser playlist, álbum ou artista
       if (item.containsKey('trackCount')) return 'album';
       if (item.containsKey('artist') || item.containsKey('channel')) return 'artist';
       if (item.containsKey('playlistId')) return 'playlist';
@@ -769,7 +864,7 @@ class MusicServices extends getx.GetxService {
     return 'unknown';
   }
 
-  /// Verifica se a playlist é comunitária (geralmente tem 'community' no título ou ID)
+  /// Verifica se a playlist é comunitária
   bool _isCommunityPlaylist(dynamic item) {
     if (item is! Map) return false;
     final title = item['title']?.toString().toLowerCase() ?? '';
@@ -786,7 +881,6 @@ class MusicServices extends getx.GetxService {
         final playlists = categories[key]!;
         for (var playlist in playlists) {
           if (playlist is Map) {
-            // Tenta extrair de 'tracks' ou 'items'
             final tracks = playlist['tracks'] ?? playlist['items'] ?? playlist['contents'];
             if (tracks is List) {
               extracted.addAll(tracks);
@@ -809,7 +903,7 @@ class MusicServices extends getx.GetxService {
       else if (key.toLowerCase() == 'artists' || key.toLowerCase() == 'channels') newKey = 'Artists';
       else if (key.toLowerCase() == 'playlists' || key.toLowerCase() == 'featured_playlists') newKey = 'Featured playlists';
       else if (key.toLowerCase() == 'community_playlists') newKey = 'Community playlists';
-      else newKey = key; // mantém original se não mapeado
+      else newKey = key;
       if (normalized.containsKey(newKey)) {
         normalized[newKey]!.addAll(value);
       } else {
