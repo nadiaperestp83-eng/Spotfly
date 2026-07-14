@@ -31,3 +31,33 @@ extension TrackMediaItemMapper on Track {
     );
   }
 }
+
+/// Caminho inverso do mapper acima: reconstrói o Track original a partir
+/// de um MediaItem "fallback" (Piped/Jamendo) — é o "gancho" que o
+/// comentário da extension acima menciona. Usado nos pontos da UI onde o
+/// toque em "play" precisa decidir se o item vai pelo pipeline legado
+/// (AudioHandler/videoId, itens reais do YouTube) ou pelo PlayerNotifier
+/// + PlaybackResolver (itens de fallback).
+extension FallbackMediaItemToTrackMapper on MediaItem {
+  /// Devolve o Track original se este MediaItem foi criado por
+  /// [TrackMediaItemMapper.toFallbackMediaItem]. Devolve `null` se for um
+  /// item real do YouTube (sem `isFallbackSource: true` nos extras) —
+  /// nesse caso a reprodução deve continuar pelo pipeline legado.
+  Track? toTrackIfFallback() {
+    if (extras?['isFallbackSource'] != true) return null;
+    final fallbackSourceId = extras!['fallbackSourceId'] as String?;
+    final fallbackSourceTrackId = extras!['fallbackSourceTrackId'] as String?;
+    if (fallbackSourceId == null || fallbackSourceTrackId == null) {
+      return null;
+    }
+    return Track(
+      id: id,
+      title: title,
+      artist: artist ?? '',
+      artworkUrl: artUri?.toString() ?? '',
+      duration: duration,
+      sourceId: fallbackSourceId,
+      sourceTrackId: fallbackSourceTrackId,
+    );
+  }
+}
