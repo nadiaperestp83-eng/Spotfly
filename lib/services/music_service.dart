@@ -6,6 +6,8 @@ import 'package:get/get.dart' as getx;
 import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
 import 'package:yt_flutter_musicapi/yt_flutter_musicapi.dart';
+import 'package:yt_flutter_musicapi/models/searchModel.dart';
+import 'package:yt_flutter_musicapi/models/chatModel.dart';
 
 import '../utils/helper.dart';
 
