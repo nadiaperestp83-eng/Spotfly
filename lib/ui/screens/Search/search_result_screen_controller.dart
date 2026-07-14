@@ -48,27 +48,27 @@ class SearchResultScreenController extends GetxController
       tabController?.animateTo(value);
     }
 
-    if (value > 0 &&
-        (!separatedResultContent.containsKey(railItems[value - 1]) ||
-            separatedResultContent[railItems[value - 1]].isEmpty)) {
+    // O índice 0 é a visualização "Todos" (All) - ignoramos porque não tem aba específica
+    if (value > 0 && value - 1 < railItems.length) {
       final tabName = railItems[value - 1];
-      final itemCount = (tabName == 'Songs' || tabName == 'Videos') ? 25 : 10;
-      final filterParams =
-          (resultContent['searchEndpoint'] as Map?)?[tabName] as String?;
+      
+      // Se já temos dados para essa aba, não recarregamos
+      if (separatedResultContent.containsKey(tabName) &&
+          separatedResultContent[tabName].isNotEmpty) {
+        isSeparatedResultContentFetced.value = true;
+        return;
+      }
+
+      final itemCount = (tabName == 'Songs' || tabName == 'Videos' || tabName == 'Tracks') ? 25 : 10;
+      final filterParams = (resultContent['searchEndpoint'] as Map?)?[tabName] as String?;
 
       try {
         if (filterParams == null) {
-          // Fonte de fallback (Piped/Jamendo): não tem abas/paginação reais.
-          // Reaproveita o que já veio na busca inicial.
+          // Fallback: se não houver filtro específico, usa o que já veio na busca inicial
           separatedResultContent[tabName] =
               List.from(resultContent[tabName] ?? []);
           additionalParamNext[tabName] = {};
         } else {
-          // Antes: sem try/catch aqui. Se o Orquestrador (SearchCoordinator)
-          // falhasse pra essa aba (ex: todas as fontes indisponíveis), a
-          // exceção subia sem tratamento, `isSeparatedResultContentFetced`
-          // nunca virava true, e a aba ficava girando pra sempre — esse
-          // era o "busca refinada não funciona".
           final result = await appProviderContainer
               .read(searchNotifierProvider.notifier)
               .searchTab(queryString.value,
@@ -84,23 +84,22 @@ class SearchResultScreenController extends GetxController
             (additionalParamNext[tabName] as Map).isNotEmpty;
         if (hasContinuation) {
           final scrollController = scrollControllers[tabName];
-          (scrollController)!.addListener(() {
-            double maxScroll = scrollController.position.maxScrollExtent;
-            double currentScroll = scrollController.position.pixels;
-            if (currentScroll >= maxScroll / 2 &&
-                additionalParamNext[tabName]['additionalParams'] !=
-                    '&ctoken=null&continuation=null') {
-              if (!continuationInProgress) {
-                printINFO("Acchhsk");
-                continuationInProgress = true;
-                getContinuationContents();
+          if (scrollController != null) {
+            scrollController.addListener(() {
+              double maxScroll = scrollController.position.maxScrollExtent;
+              double currentScroll = scrollController.position.pixels;
+              if (currentScroll >= maxScroll / 2 &&
+                  additionalParamNext[tabName]['additionalParams'] !=
+                      '&ctoken=null&continuation=null') {
+                if (!continuationInProgress) {
+                  continuationInProgress = true;
+                  getContinuationContents();
+                }
               }
-            }
-          });
+            });
+          }
         }
       } catch (e, st) {
-        // Nunca deixa a aba presa em loading: sempre marca como resolvida
-        // e mostra o erro real na tela pra diagnóstico direto no celular.
         printERROR("Busca da aba '$tabName' falhou: $e");
         printERROR(st.toString());
         separatedResultContent[tabName] = [];
@@ -118,6 +117,8 @@ class SearchResultScreenController extends GetxController
   }
 
   Future<void> getContinuationContents() async {
+    if (navigationRailCurrentIndex.value <= 0) return;
+    
     final tabName = railItems[navigationRailCurrentIndex.value - 1];
 
     if ((additionalParamNext[tabName] as Map?)?.isEmpty ?? true) {
@@ -135,9 +136,6 @@ class SearchResultScreenController extends GetxController
       additionalParamNext[tabName] = result.continuationParams[tabName] ?? {};
       separatedResultContent.refresh();
     } catch (e, st) {
-      // Antes: sem try/catch. Um erro aqui deixava continuationInProgress
-      // travado em true, bloqueando qualquer novo carregamento por scroll
-      // até o usuário sair e voltar pra tela.
       printERROR("Continuação da aba '$tabName' falhou: $e");
       printERROR(st.toString());
       additionalParamNext[tabName] = {};
@@ -154,110 +152,151 @@ class SearchResultScreenController extends GetxController
   }
 
   void viewAllCallback(String text) {
-    onDestinationSelected(railItems.indexOf(text) + 1);
+    final index = railItems.indexOf(text);
+    if (index != -1) {
+      onDestinationSelected(index + 1);
+    }
   }
 
   Future<void> _getInitSearchResult() async {
     isResultContentFetced.value = false;
     final args = Get.arguments;
-    if (args != null) {
-      queryString.value = args;
+    if (args == null) return;
 
-      final result = await appProviderContainer
-          .read(searchNotifierProvider.notifier)
-          .search(args);
+    queryString.value = args;
 
-      // Diagnóstico: SearchNotifier.search() usa AsyncValue.guard, então
-      // mesmo se TODAS as fontes falharem ele nunca lança exceção aqui —
-      // só devolve um SearchResult vazio, indistinguível de "sem
-      // resultados pra essa busca". Checando o estado bruto do provider
-      // conseguimos saber se foi erro de verdade e mostrar na tela.
-      final asyncState = appProviderContainer.read(searchNotifierProvider);
-      if (asyncState.hasError) {
-        printERROR("Busca inicial falhou: ${asyncState.error}");
-        Get.snackbar(
-          'Erro na busca',
-          asyncState.error.toString(),
-          duration: const Duration(seconds: 10),
-          isDismissible: true,
-          snackPosition: SnackPosition.BOTTOM,
-        );
+    final result = await appProviderContainer
+        .read(searchNotifierProvider.notifier)
+        .search(args);
+
+    // Diagnóstico: verifica se houve erro (AsyncValue)
+    final asyncState = appProviderContainer.read(searchNotifierProvider);
+    if (asyncState.hasError) {
+      printERROR("Busca inicial falhou: ${asyncState.error}");
+      Get.snackbar(
+        'Erro na busca',
+        asyncState.error.toString(),
+        duration: const Duration(seconds: 10),
+        isDismissible: true,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+
+    // 🔥 CORREÇÃO: Aceita dinamicamente todas as chaves não vazias
+    final allKeys = <String>[];
+    for (var key in result.categories.keys) {
+      final content = result.categories[key];
+      if (content is List && content.isNotEmpty) {
+        allKeys.add(key);
       }
+    }
 
-      resultContent.value = Map<String, dynamic>.from(result.categories);
+    // Se não encontrou nenhuma chave com conteúdo, tenta um fallback com nomes comuns
+    if (allKeys.isEmpty) {
+      final fallbackKeys = [
+        "Songs",
+        "Tracks",
+        "Videos",
+        "Albums",
+        "Featured playlists",
+        "Community playlists",
+        "Playlists",
+        "Artists",
+        "Channels"
+      ];
+      for (var key in fallbackKeys) {
+        if (result.categories.containsKey(key) &&
+            (result.categories[key] as List?)?.isNotEmpty == true) {
+          allKeys.add(key);
+        }
+      }
+    }
 
-      final allKeys = resultContent.keys.where((element) => ([
-            "Songs",
-            "Videos",
-            "Albums",
-            "Featured playlists",
-            "Community playlists",
-            "Artists"
-          ]).contains(element));
-      railItems.value = List<String>.from(allKeys);
-      final len =
-          railItems.where((element) => element.contains("playlists")).length;
-      final calH = 30 + (railItems.length + 1 - len) * 123 + len * 150.0;
-      railitemHeight.value =
-          calH >= railitemHeight.value ? calH : railitemHeight.value;
+    // Se ainda assim não houver nada, pelo menos exibe as chaves que existem (mesmo vazias)
+    if (allKeys.isEmpty) {
+      // Pega todas as chaves disponíveis, mesmo que vazias, para não ficar tela em branco
+      allKeys.addAll(result.categories.keys);
+    }
 
-      //ScrollControlers for list Continuation callback implementarion
-      for (String item in railItems) {
+    railItems.value = allKeys;
+
+    // Atualiza o resultContent com todas as categorias
+    resultContent.value = Map<String, dynamic>.from(result.categories);
+
+    // Cálculo da altura do rail (opcional)
+    final len = railItems.where((element) => element.toLowerCase().contains("playlist")).length;
+    final calH = 30 + (railItems.length + 1 - len) * 123 + len * 150.0;
+    railitemHeight.value = calH >= railitemHeight.value ? calH : railitemHeight.value;
+
+    // Cria ScrollControllers para cada item
+    for (String item in railItems) {
+      if (!scrollControllers.containsKey(item)) {
         scrollControllers[item] = ScrollController();
       }
+    }
 
-      //Case if bottom nav used
-      if (GetPlatform.isDesktop ||
-          Get.find<SettingsScreenController>().isBottomNavBarEnabled.isTrue) {
-        // assiging init val
-        for (var element in railItems) {
+    // Configuração para bottom nav / desktop
+    if (GetPlatform.isDesktop ||
+        Get.find<SettingsScreenController>().isBottomNavBarEnabled.isTrue) {
+      for (var element in railItems) {
+        if (!separatedResultContent.containsKey(element)) {
           separatedResultContent[element] = [];
         }
-
-        //tab controller for v2
-        tabController =
-            TabController(length: railItems.length + 1, vsync: this);
-
-        tabController?.animation?.addListener(() {
-          int indexChange = tabController!.offset.round();
-          int index = tabController!.index + indexChange;
-
-          if (index != navigationRailCurrentIndex.value) {
-            onDestinationSelected(index, ignoreTabCommand: true);
-          }
-        });
       }
-      isResultContentFetced.value = true;
+      if (tabController == null) {
+        tabController = TabController(length: railItems.length + 1, vsync: this);
+      } else {
+        tabController?.dispose();
+        tabController = TabController(length: railItems.length + 1, vsync: this);
+      }
+      tabController?.animation?.addListener(() {
+        int indexChange = tabController!.offset.round();
+        int index = tabController!.index + indexChange;
+        if (index != navigationRailCurrentIndex.value) {
+          onDestinationSelected(index, ignoreTabCommand: true);
+        }
+      });
     }
+
+    isResultContentFetced.value = true;
   }
 
   void onSort(SortType sortType, bool isAscending, String title) {
-    if (title == "Songs" || title == "Videos") {
-      final songList = separatedResultContent[title].toList();
-      sortSongsNVideos(songList, sortType, isAscending);
-      separatedResultContent[title] = songList;
-    } else if (title.contains('playlists')) {
-      final playlists = separatedResultContent[title].toList();
-      sortPlayLists(playlists, sortType, isAscending);
-      separatedResultContent[title] = playlists;
-    } else if (title == "Artists") {
-      final artistList = separatedResultContent[title].toList();
-      sortArtist(artistList, sortType, isAscending);
-      separatedResultContent[title] = artistList;
-    } else if (title == "Albums") {
-      final albumList = separatedResultContent[title].toList();
-      sortAlbumNSingles(albumList, sortType, isAscending);
-      separatedResultContent[title] = albumList;
+    // 🔥 Normaliza o título para comparação
+    final lowerTitle = title.toLowerCase();
+    final contentList = separatedResultContent[title];
+    if (contentList == null || contentList.isEmpty) return;
+
+    if (lowerTitle.contains("song") || lowerTitle.contains("track")) {
+      final list = List.from(contentList);
+      sortSongsNVideos(list, sortType, isAscending);
+      separatedResultContent[title] = list;
+    } else if (lowerTitle.contains("playlist")) {
+      final list = List.from(contentList);
+      sortPlayLists(list, sortType, isAscending);
+      separatedResultContent[title] = list;
+    } else if (lowerTitle.contains("artist") || lowerTitle.contains("channel")) {
+      final list = List.from(contentList);
+      sortArtist(list, sortType, isAscending);
+      separatedResultContent[title] = list;
+    } else if (lowerTitle.contains("album")) {
+      final list = List.from(contentList);
+      sortAlbumNSingles(list, sortType, isAscending);
+      separatedResultContent[title] = list;
+    } else if (lowerTitle.contains("video")) {
+      final list = List.from(contentList);
+      sortSongsNVideos(list, sortType, isAscending);
+      separatedResultContent[title] = list;
     }
   }
 
   @override
   void onClose() {
     for (String item in railItems) {
-      (scrollControllers[item])!.dispose();
+      scrollControllers[item]?.dispose();
     }
-    Get.find<HomeScreenController>().whenHomeScreenOnTop();
     tabController?.dispose();
+    Get.find<HomeScreenController>().whenHomeScreenOnTop();
     super.onClose();
   }
 }
