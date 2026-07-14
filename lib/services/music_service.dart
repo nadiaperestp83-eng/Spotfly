@@ -1,16 +1,16 @@
 // ignore_for_file: constant_identifier_names
 
+import 'dart:convert';
 import 'package:audio_service/audio_service.dart';
 import 'package:get/get.dart' as getx;
 import 'package:hive/hive.dart';
 
-import 'youtube_music_api.dart';
-import 'stream_service.dart'; // já existe, para áudio
-import '../models/album.dart';
 import '../utils/helper.dart';
+import 'constant.dart';
+import 'youtube_music_api.dart';
 
 // ============================================================
-//  DEFINIÇÃO DA EXCEÇÃO NetworkError
+//  NetworkError
 // ============================================================
 class NetworkError implements Exception {
   final String message;
@@ -19,36 +19,22 @@ class NetworkError implements Exception {
   String toString() => message;
 }
 
-enum AudioQuality {
-  Low,
-  High,
-}
-
 class MusicServices extends getx.GetxService {
   final YouTubeMusicApi _api = YouTubeMusicApi();
-  final StreamService _streamService = StreamService(); // se já existir
 
-  // ============================================================
-  //  INICIALIZAÇÃO
-  // ============================================================
   @override
   void onInit() {
     super.onInit();
-    printINFO("🎵 MusicServices inicializado com YouTubeMusicApi");
+    printINFO("🎵 MusicServices inicializado com YouTube Music API direta");
   }
 
   set hlCode(String code) {
-    // A ser implementado se necessário
-    printINFO("hlCode set to: $code");
+    _api.hlCode = code;
   }
 
   // ============================================================
-  //  MÉTODOS PÚBLICOS
+  //  1. SEARCH
   // ============================================================
-
-  // ------------------------------------------------------------------
-  // 1. SEARCH
-  // ------------------------------------------------------------------
   Future<Map<String, dynamic>> search(
     String query, {
     String? filter,
@@ -58,94 +44,52 @@ class MusicServices extends getx.GetxService {
     String? filterParams,
   }) async {
     try {
-      printINFO("🔍 Buscando: '$query'");
-      final result = await _api.search(query, limit: limit);
-      final results = result['contents']?['tabbedSearchResultsRenderer']?['tabs']?[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents'];
-      // Aqui você deve extrair e categorizar os resultados manualmente,
-      // ou usar um parser similar ao antigo nav_parser.dart.
-      // Por simplicidade, vou retornar o JSON bruto por enquanto.
-      // Você pode adaptar conforme a estrutura do seu app.
-      printINFO("📊 Busca retornou dados");
-      return result;
+      printINFO("🔍 Buscando: '$query' (limit: $limit)");
+      final raw = await _api.search(query, limit: limit);
+      // O parse da resposta pode ser feito aqui ou em um parser separado
+      // Por enquanto, retornamos os dados crus (como fazia o proxy)
+      // Você pode usar o mesmo _categorizeSearchResults do proxy
+      return _categorizeSearchResults(raw);
     } catch (e) {
       printERROR("❌ Erro no search: $e");
       return {};
     }
   }
 
-  // ------------------------------------------------------------------
-  // 2. GET HOME
-  // ------------------------------------------------------------------
+  // ============================================================
+  //  2. GET HOME (browseId = FEmusic_home)
+  // ============================================================
   Future<dynamic> getHome({int limit = 4}) async {
     try {
       printINFO("🏠 Buscando Home...");
-      final result = await _api.browse('FEmusic_home');
-      // Parse da resposta para extrair seções de música
-      // Você pode usar uma versão simplificada do parseMixedContent aqui
-      return _parseHomeContent(result);
+      final raw = await _api.browse('FEmusic_home');
+      // Parse da home (extrair seções)
+      return _parseHome(raw);
     } catch (e) {
       printERROR("❌ Erro no getHome: $e");
       return [];
     }
   }
 
-  List<dynamic> _parseHomeContent(Map<String, dynamic> data) {
-    // Extrai as seções da Home – adapte conforme seu app
-    final contents = data['contents']?['twoColumnBrowseResultsRenderer']?['tabs']?[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents'];
-    if (contents == null) return [];
-    List result = [];
-    for (var section in contents) {
-      final shelf = section['musicCarouselShelfRenderer'];
-      if (shelf != null) {
-        final title = shelf['header']?['musicCarouselShelfBasicHeaderRenderer']?['title']?['runs']?[0]?['text'] ?? '';
-        final items = shelf['contents'] ?? [];
-        result.add({
-          'title': title,
-          'contents': items,
-        });
-      }
-    }
-    return result;
-  }
-
-  // ------------------------------------------------------------------
-  // 3. GET CHARTS
-  // ------------------------------------------------------------------
+  // ============================================================
+  //  3. GET CHARTS (browseId = FEmusic_charts)
+  // ============================================================
   Future<List<Map<String, dynamic>>> getCharts(String category,
       {String? countryCode}) async {
     try {
       printINFO("📈 Buscando charts: $category");
-      final result = await _api.browse('FEmusic_charts',
-          additionalData: countryCode != null
-              ? {'formData': {'selectedValues': [countryCode]}}
-              : null);
-      // Parse simples
-      final sections = result['contents']?['singleColumnBrowseResultsRenderer']?['tabs']?[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents'];
-      if (sections == null) return [];
-      List<Map<String, dynamic>> charts = [];
-      for (var section in sections) {
-        final shelf = section['musicCarouselShelfRenderer'];
-        if (shelf != null) {
-          final title = shelf['header']?['musicCarouselShelfBasicHeaderRenderer']?['title']?['runs']?[0]?['text'] ?? '';
-          final items = shelf['contents'] ?? [];
-          if (title.contains('Video charts') || title.contains(category)) {
-            charts.add({
-              'title': title,
-              'contents': items,
-            });
-          }
-        }
-      }
-      return charts;
+      final raw = await _api.browse('FEmusic_charts');
+      // Parse dos charts
+      return _parseCharts(raw, category);
     } catch (e) {
       printERROR("❌ Erro no getCharts: $e");
       return [];
     }
   }
 
-  // ------------------------------------------------------------------
-  // 4. GET WATCH PLAYLIST
-  // ------------------------------------------------------------------
+  // ============================================================
+  //  4. GET WATCH PLAYLIST (via /next)
+  // ============================================================
   Future<Map<String, dynamic>> getWatchPlaylist({
     String videoId = "",
     String? playlistId,
@@ -156,46 +100,43 @@ class MusicServices extends getx.GetxService {
     bool onlyRelated = false,
   }) async {
     try {
-      // Usamos a API 'next'
-      final result = await _api.next(videoId, playlistId: playlistId);
-      // Extrai as faixas da playlist
-      final tracks = _parseWatchPlaylist(result);
-      return {
-        'tracks': tracks,
-        'playlistId': playlistId ?? '',
-        'lyrics': null,
-        'related': null,
-        'additionalParamsForNext': null,
-      };
+      if (videoId.isEmpty) {
+        // Se não tiver videoId, tenta usar playlistId (mas /next exige videoId)
+        // Você pode adaptar: se tiver playlistId, buscar a primeira música da playlist
+        if (playlistId != null) {
+          // Obtém a playlist via browse e pega o primeiro vídeo
+          final playlistData = await getPlaylistOrAlbumSongs(playlistId: playlistId);
+          final tracks = playlistData['tracks'] as List? ?? [];
+          if (tracks.isNotEmpty) {
+            final first = tracks.first;
+            if (first is Map && first.containsKey('videoId')) {
+              videoId = first['videoId'].toString();
+            }
+          }
+        }
+        if (videoId.isEmpty) {
+          return {'tracks': [], 'playlistId': playlistId ?? '', 'lyrics': null, 'related': null, 'additionalParamsForNext': null};
+        }
+      }
+
+      printINFO("🎵 Obtendo watch playlist para: $videoId");
+      final raw = await _api.next(
+        videoId: videoId,
+        playlistId: playlistId,
+        radio: radio,
+        shuffle: shuffle,
+      );
+      // Parse da watch playlist
+      return _parseWatchPlaylist(raw);
     } catch (e) {
       printERROR("❌ Erro no getWatchPlaylist: $e");
       return {'tracks': [], 'playlistId': '', 'lyrics': null, 'related': null, 'additionalParamsForNext': null};
     }
   }
 
-  List<dynamic> _parseWatchPlaylist(Map<String, dynamic> data) {
-    // Extrai lista de faixas do watch playlist
-    final contents = data['contents']?['singleColumnMusicWatchNextResultsRenderer']?['tabbedRenderer']?['watchNextTabbedResultsRenderer']?['tabs']?[0]?['tabRenderer']?['content']?['musicQueueRenderer']?['content']?['playlistPanelRenderer']?['contents'];
-    if (contents == null) return [];
-    List tracks = [];
-    for (var item in contents) {
-      final video = item['playlistPanelVideoRenderer'];
-      if (video != null) {
-        tracks.add({
-          'videoId': video['videoId'],
-          'title': video['title']?['runs']?[0]?['text'] ?? '',
-          'artists': video['longBylineText']?['runs'] ?? [],
-          'thumbnails': video['thumbnail']?['thumbnails'] ?? [],
-          'duration': video['lengthText']?['simpleText'] ?? '0',
-        });
-      }
-    }
-    return tracks;
-  }
-
-  // ------------------------------------------------------------------
-  // 5. GET PLAYLIST OR ALBUM SONGS
-  // ------------------------------------------------------------------
+  // ============================================================
+  //  5. GET PLAYLIST OR ALBUM SONGS (via /browse)
+  // ============================================================
   Future<Map<String, dynamic>> getPlaylistOrAlbumSongs({
     String? playlistId,
     String? albumId,
@@ -205,11 +146,14 @@ class MusicServices extends getx.GetxService {
   }) async {
     try {
       if (playlistId != null) {
-        final result = await _api.browse('VL$playlistId');
-        return _parsePlaylist(result);
+        printINFO("📋 Obtendo playlist: $playlistId");
+        final browseId = playlistId.startsWith('VL') ? playlistId : 'VL$playlistId';
+        final raw = await _api.browse(browseId);
+        return _parsePlaylist(raw);
       } else if (albumId != null) {
-        final result = await _api.browse(albumId);
-        return _parseAlbum(result);
+        printINFO("📀 Obtendo álbum: $albumId");
+        final raw = await _api.browse(albumId);
+        return _parseAlbum(raw);
       }
       return {};
     } catch (e) {
@@ -218,52 +162,14 @@ class MusicServices extends getx.GetxService {
     }
   }
 
-  Map<String, dynamic> _parsePlaylist(Map<String, dynamic> data) {
-    // Extrai informações da playlist
-    final header = data['header']?['musicDetailHeaderRenderer'];
-    final contents = data['contents']?['twoColumnBrowseResultsRenderer']?['tabs']?[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents']?[0]?['musicPlaylistShelfRenderer']?['contents'];
-    final tracks = contents.map((item) {
-      final video = item['musicResponsiveListItemRenderer'];
-      if (video == null) return null;
-      return {
-        'videoId': video['videoId'],
-        'title': video['title']?['runs']?[0]?['text'] ?? '',
-        'artists': video['longBylineText']?['runs'] ?? [],
-        'thumbnails': video['thumbnail']?['thumbnails'] ?? [],
-        'duration': video['lengthText']?['simpleText'] ?? '0',
-      };
-    }).where((t) => t != null).toList();
-    return {
-      'id': playlistId,
-      'title': header?['title']?['runs']?[0]?['text'] ?? '',
-      'thumbnails': header?['thumbnail']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] ?? [],
-      'description': header?['description']?['runs']?[0]?['text'] ?? '',
-      'trackCount': tracks.length,
-      'tracks': tracks,
-    };
-  }
-
-  Map<String, dynamic> _parseAlbum(Map<String, dynamic> data) {
-    // Similar ao parsePlaylist
-    // Você pode implementar conforme necessário
-    return {};
-  }
-
-  // ------------------------------------------------------------------
-  // 6. GET ARTIST
-  // ------------------------------------------------------------------
+  // ============================================================
+  //  6. GET ARTIST (via /browse)
+  // ============================================================
   Future<Map<String, dynamic>> getArtist(String artistId) async {
     try {
-      final result = await _api.browse(artistId);
-      final header = result['header']?['musicImmersiveHeaderRenderer'] ?? result['header']?['musicArtistHeaderRenderer'];
-      return {
-        'id': artistId,
-        'name': header?['title']?['runs']?[0]?['text'] ?? 'Unknown',
-        'thumbnails': header?['thumbnail']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] ?? [],
-        'description': header?['description']?['runs']?[0]?['text'] ?? '',
-        'subscribers': '0',
-        'radioId': '',
-      };
+      printINFO("🎤 Obtendo artista: $artistId");
+      final raw = await _api.browse(artistId);
+      return _parseArtist(raw);
     } catch (e) {
       printERROR("❌ Erro no getArtist: $e");
       return {
@@ -277,25 +183,24 @@ class MusicServices extends getx.GetxService {
     }
   }
 
-  // ------------------------------------------------------------------
-  // 7. GET ARTIST RELATED CONTENT
-  // ------------------------------------------------------------------
+  // ============================================================
+  //  7. GET ARTIST RELATED CONTENT (via /browse com params)
+  // ============================================================
   Future<Map<String, dynamic>> getArtistRelatedContent(
     String artistId,
     String tabName, {
     int limit = 10,
     Map<String, dynamic>? additionalParams,
   }) async {
-    // Implementação simples: busca os álbuns/playlists do artista
     try {
-      final result = await _api.browse(artistId);
-      // Extrai dados da aba específica (Songs, Albums, Playlists)
-      // Isso vai depender da estrutura do JSON
-      return {
-        'contents': [],
-        'additionalParams': {},
-      };
+      printINFO("🎤 Buscando conteúdo relacionado para: $artistId, tab: $tabName");
+      // Exemplo de params para abas de artista (songs, albums, etc.)
+      final params = _getArtistTabParams(tabName);
+      final raw = await _api.browse(artistId, params: params);
+      // Parse da seção
+      return _parseArtistSection(raw, tabName);
     } catch (e) {
+      printERROR("❌ Erro no getArtistRelatedContent: $e");
       return {'contents': [], 'additionalParams': {}};
     }
   }
@@ -311,91 +216,133 @@ class MusicServices extends getx.GetxService {
         limit: limit, additionalParams: additionalParams);
   }
 
-  // ------------------------------------------------------------------
-  // 8. GET SEARCH CONTINUATION (scroll infinito)
-  // ------------------------------------------------------------------
-  Future<Map<String, dynamic>> getSearchContinuation(
-    Map<String, dynamic> continuationParams, {
-    int limit = 10,
-  }) async {
-    // Reimplementar usando a API de continuations
-    try {
-      final response = await _api.search('', limit: 1); // placeholder
-      return {};
-    } catch (e) {
-      return {};
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // 9. GET SONG YEAR
-  // ------------------------------------------------------------------
+  // ============================================================
+  //  8. GET SONG YEAR (via /player)
+  // ============================================================
   Future<String> getSongYear(String songId) async {
     try {
-      final result = await _api.player(songId);
-      final microformat = result['microformat']?['microformatDataRenderer'];
-      if (microformat != null) {
-        final date = microformat['publishedDate'] ?? '';
-        if (date is String) {
-          final match = RegExp(r'\d{4}').firstMatch(date);
-          return match?.group(0) ?? DateTime.now().year.toString();
-        }
+      final raw = await _api.player(songId);
+      // Extrair ano do microformat ou publishedDate
+      final microformat = raw['microformat']?['microformatDataRenderer'];
+      final date = microformat?['publishedDate'] ?? '';
+      if (date is String && date.isNotEmpty) {
+        final match = RegExp(r'\d{4}').firstMatch(date);
+        return match?.group(0) ?? DateTime.now().year.toString();
       }
     } catch (_) {}
     return DateTime.now().year.toString();
   }
 
-  // ------------------------------------------------------------------
-  // 10. GET SONG WITH ID (deep link)
-  // ------------------------------------------------------------------
+  // ============================================================
+  //  9. GET SONG WITH ID (via /player)
+  // ============================================================
   Future<List> getSongWithId(String songId) async {
-    // Usa stream_service.dart para obter a URL de áudio, se necessário
-    // Mas aqui apenas buscamos os metadados
     try {
-      final result = await _api.player(songId);
-      final videoDetails = result['videoDetails'];
-      if (videoDetails != null) {
-        final track = {
-          'videoId': songId,
-          'title': videoDetails['title'] ?? '',
-          'artists': [{ 'name': videoDetails['author'] ?? '' }],
-          'thumbnails': videoDetails['thumbnail']?['thumbnails'] ?? [],
-          'duration': int.tryParse(videoDetails['lengthSeconds'] ?? '0') ?? 0,
-        };
+      final raw = await _api.player(songId);
+      final track = _extractTrackFromPlayer(raw);
+      if (track.isNotEmpty) {
         return [true, [track]];
       }
     } catch (_) {}
     return [false, null];
   }
 
-  // ------------------------------------------------------------------
-  // 11. GET LYRICS
-  // ------------------------------------------------------------------
+  // ============================================================
+  //  OUTROS MÉTODOS (stubs)
+  // ============================================================
   dynamic getLyrics(String browseId) {
-    printINFO("⚠️ getLyrics não implementado ainda");
+    printINFO("⚠️ getLyrics não suportado diretamente.");
     return '';
   }
 
-  // ------------------------------------------------------------------
-  // 12. GET CONTENT RELATED TO SONG
-  // ------------------------------------------------------------------
   dynamic getContentRelatedToSong(String videoId, String hlCode) {
-    printINFO("⚠️ getContentRelatedToSong não implementado ainda");
+    printINFO("⚠️ getContentRelatedToSong não suportado.");
     return [];
   }
 
-  // ------------------------------------------------------------------
-  // 13. GET SEARCH SUGGESTIONS
-  // ------------------------------------------------------------------
   Future<List<String>> getSearchSuggestion(String queryStr) async {
-    // Pode ser implementado com /music/get_search_suggestions
-    printINFO("⚠️ getSearchSuggestion não implementado ainda");
+    printINFO("⚠️ getSearchSuggestion não suportado.");
     return [];
   }
 
-  @override
-  void onClose() {
-    _api.onClose();
-    super.onClose();
+  Future<Map<String, dynamic>> getSearchContinuation(
+    Map<String, dynamic> continuationParams, {
+    int limit = 10,
+  }) async {
+    printINFO("⚠️ getSearchContinuation não suportado.");
+    return {};
+  }
+
+  // ============================================================
+  //  FUNÇÕES DE PARSE (a implementar)
+  // ============================================================
+  // Você pode reutilizar as funções de parse do seu antigo código
+  // ou adaptar conforme a estrutura da resposta do YouTube.
+
+  Map<String, dynamic> _categorizeSearchResults(Map<String, dynamic> raw) {
+    // Implementar extração de categorias (Songs, Videos, etc.)
+    // Baseado na resposta /search
+    // ...
+    return {};
+  }
+
+  List<dynamic> _parseHome(Map<String, dynamic> raw) {
+    // Extrair seções da home
+    // ...
+    return [];
+  }
+
+  List<Map<String, dynamic>> _parseCharts(Map<String, dynamic> raw, String category) {
+    // Extrair charts
+    // ...
+    return [];
+  }
+
+  Map<String, dynamic> _parseWatchPlaylist(Map<String, dynamic> raw) {
+    // Extrair tracks da watch playlist
+    // ...
+    return {'tracks': [], 'playlistId': '', 'lyrics': null, 'related': null, 'additionalParamsForNext': null};
+  }
+
+  Map<String, dynamic> _parsePlaylist(Map<String, dynamic> raw) {
+    // Extrair playlist detalhada
+    // ...
+    return {};
+  }
+
+  Map<String, dynamic> _parseAlbum(Map<String, dynamic> raw) {
+    // Extrair álbum detalhado
+    // ...
+    return {};
+  }
+
+  Map<String, dynamic> _parseArtist(Map<String, dynamic> raw) {
+    // Extrair artista
+    // ...
+    return {
+      'id': '',
+      'name': '',
+      'thumbnails': [],
+      'description': '',
+      'subscribers': '0',
+      'radioId': '',
+    };
+  }
+
+  Map<String, dynamic> _parseArtistSection(Map<String, dynamic> raw, String tabName) {
+    // Extrair seção do artista
+    // ...
+    return {'contents': [], 'additionalParams': {}};
+  }
+
+  Map<String, dynamic> _extractTrackFromPlayer(Map<String, dynamic> raw) {
+    // Extrair track do /player
+    // ...
+    return {};
+  }
+
+  Map<String, dynamic>? _getArtistTabParams(String tabName) {
+    // Retornar params para abas de artista
+    return null;
   }
 }
