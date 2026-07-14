@@ -17,9 +17,6 @@ class NetworkError implements Exception {
   String toString() => message;
 }
 
-// ============================================================
-//  AudioQuality (usado nas settings)
-// ============================================================
 enum AudioQuality {
   Low,
   High,
@@ -29,7 +26,7 @@ class MusicServices extends getx.GetxService {
   // ============================================================
   //  CLIENTE DO DART_YTMUSIC_API
   // ============================================================
-  final YtMusicApi _ytApi = YtMusicApi(hl: 'pt-BR'); // ou 'en'
+  final YtMusicApi _ytApi = YtMusicApi(hl: 'pt-BR');
 
   // ============================================================
   //  INICIALIZAÇÃO
@@ -41,7 +38,6 @@ class MusicServices extends getx.GetxService {
   }
 
   set hlCode(String code) {
-    // Não é mais necessário, mas mantido para compatibilidade
     printINFO("hlCode set to: $code (ignorado)");
   }
 
@@ -50,7 +46,7 @@ class MusicServices extends getx.GetxService {
   // ============================================================
 
   // ------------------------------------------------------------------
-  // 1. SEARCH - retorna categorias (Songs, Videos, Albums, Artists, Playlists)
+  // 1. SEARCH - categoriza resultados
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> search(
     String query, {
@@ -74,45 +70,20 @@ class MusicServices extends getx.GetxService {
       };
 
       for (var item in results) {
-        final json = _searchResultToMap(item);
-        if (json.isEmpty) continue;
+        // Converte para Map de forma segura
+        final map = _searchResultToMap(item);
+        if (map.isEmpty) continue;
 
-        switch (item.resultType) {
-          case ResultType.song:
-            categorized['Songs']!.add(json);
-            break;
-          case ResultType.video:
-            categorized['Videos']!.add(json);
-            break;
-          case ResultType.album:
-            categorized['Albums']!.add(json);
-            break;
-          case ResultType.artist:
-            categorized['Artists']!.add(json);
-            break;
-          case ResultType.playlist:
-            final title = item.title?.toLowerCase() ?? '';
-            final id = item.browseId?.toLowerCase() ?? '';
-            if (title.contains('community') || id.contains('community')) {
-              categorized['Community playlists']!.add(json);
-            } else {
-              categorized['Featured playlists']!.add(json);
-            }
-            break;
-          default:
-            // fallback: tenta adivinhar
-            if (json.containsKey('videoId')) {
-              categorized['Songs']!.add(json);
-            } else if (json.containsKey('browseId') && json.containsKey('trackCount')) {
-              categorized['Albums']!.add(json);
-            } else if (json.containsKey('playlistId')) {
-              categorized['Featured playlists']!.add(json);
-            }
-            break;
+        // Determina a categoria com base no tipo (se disponível) ou inferência
+        String category = _inferCategory(item);
+        if (categorized.containsKey(category)) {
+          categorized[category]!.add(map);
+        } else {
+          // fallback: Songs
+          categorized['Songs']!.add(map);
         }
       }
 
-      // Remove categorias vazias
       categorized.removeWhere((key, value) => value.isEmpty);
       printINFO("📊 Categorias encontradas: ${categorized.keys}");
       return categorized;
@@ -123,7 +94,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 2. GET HOME - retorna seções (carrosséis)
+  // 2. GET HOME
   // ------------------------------------------------------------------
   Future<dynamic> getHome({int limit = 4}) async {
     try {
@@ -154,11 +125,11 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 3. GET CHARTS - não implementado (usar search com filtro)
+  // 3. GET CHARTS - fallback usando search
   // ------------------------------------------------------------------
   Future<List<Map<String, dynamic>>> getCharts(String category,
       {String? countryCode}) async {
-    printINFO("⚠️ getCharts não implementado. Usando search como fallback.");
+    printINFO("⚠️ getCharts: usando search como fallback.");
     try {
       final results = await _ytApi.search(category);
       if (results.isEmpty) return [];
@@ -174,7 +145,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 4. GET WATCH PLAYLIST - obtém música ou playlist
+  // 4. GET WATCH PLAYLIST
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getWatchPlaylist({
     String videoId = "",
@@ -189,7 +160,7 @@ class MusicServices extends getx.GetxService {
       if (videoId.isNotEmpty) {
         printINFO("🎵 Obtendo música: $videoId");
         final song = await _ytApi.getSong(videoId);
-        final track = _songToTrack(song);
+        final track = _songToMap(song);
         return {
           'tracks': [track],
           'playlistId': playlistId ?? '',
@@ -200,7 +171,7 @@ class MusicServices extends getx.GetxService {
       } else if (playlistId != null) {
         printINFO("📋 Obtendo playlist: $playlistId");
         final playlist = await _ytApi.getPlaylist(playlistId);
-        final tracks = playlist.songs.map((s) => _songToTrack(s)).toList();
+        final tracks = playlist.songs.map((s) => _songToMap(s)).toList();
         return {
           'tracks': tracks,
           'playlistId': playlistId,
@@ -244,7 +215,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 6. GET ARTIST - via dart_ytmusic_api
+  // 6. GET ARTIST
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getArtist(String artistId) async {
     try {
@@ -272,7 +243,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 7. GET ARTIST RELATED CONTENT - não implementado diretamente (usar search)
+  // 7. GET ARTIST RELATED CONTENT (fallback via search)
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getArtistRelatedContent(
     String artistId,
@@ -305,7 +276,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 8. GET SEARCH CONTINUATION - não suportado pelo pacote (stub)
+  // 8. GET SEARCH CONTINUATION - não suportado
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getSearchContinuation(
     Map<String, dynamic> continuationParams, {
@@ -316,7 +287,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 9. GET SONG YEAR - via getSong
+  // 9. GET SONG YEAR
   // ------------------------------------------------------------------
   Future<String> getSongYear(String songId) async {
     try {
@@ -328,12 +299,12 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 10. GET SONG WITH ID - via getSong
+  // 10. GET SONG WITH ID
   // ------------------------------------------------------------------
   Future<List> getSongWithId(String songId) async {
     try {
       final song = await _ytApi.getSong(songId);
-      final track = _songToTrack(song);
+      final track = _songToMap(song);
       return [true, [track]];
     } catch (_) {
       return [false, null];
@@ -341,70 +312,103 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 11. GET LYRICS - não suportado (stub)
+  // 11-13. STUBS
   // ------------------------------------------------------------------
   dynamic getLyrics(String browseId) {
     printINFO("⚠️ getLyrics não suportado.");
     return '';
   }
 
-  // ------------------------------------------------------------------
-  // 12. GET CONTENT RELATED TO SONG - stub
-  // ------------------------------------------------------------------
   dynamic getContentRelatedToSong(String videoId, String hlCode) {
     printINFO("⚠️ getContentRelatedToSong não suportado.");
     return [];
   }
 
-  // ------------------------------------------------------------------
-  // 13. GET SEARCH SUGGESTIONS - não suportado (stub)
-  // ------------------------------------------------------------------
   Future<List<String>> getSearchSuggestion(String queryStr) async {
     printINFO("⚠️ getSearchSuggestion não suportado.");
     return [];
   }
 
   // ============================================================
-  //  FUNÇÕES AUXILIARES DE CONVERSÃO
+  //  FUNÇÕES AUXILIARES DE CONVERSÃO (ajustadas para a API real)
   // ============================================================
 
-  /// Converte um SearchResult para Map<String, dynamic>
-  Map<String, dynamic> _searchResultToMap(SearchResult result) {
-    return {
-      'title': result.title ?? '',
-      'videoId': result.videoId,
-      'browseId': result.browseId,
-      'playlistId': result.playlistId,
-      'thumbnails': result.thumbnails?.map((t) => {'url': t.url}).toList() ?? [],
-      'artist': result.artist,
-      'artists': result.artists,
-      'album': result.album,
-      'duration': result.duration?.inSeconds,
-      'year': result.year,
-      'trackCount': result.trackCount,
-      'resultType': result.resultType.name,
-    };
+  /// Converte SearchResult para Map, ignorando campos que não existem
+  Map<String, dynamic> _searchResultToMap(dynamic result) {
+    final map = <String, dynamic>{};
+    try {
+      // Propriedades comuns (usando getters ou campos)
+      map['title'] = result.title ?? '';
+      if (result.videoId != null) map['videoId'] = result.videoId;
+      if (result.browseId != null) map['browseId'] = result.browseId;
+      if (result.playlistId != null) map['playlistId'] = result.playlistId;
+      if (result.thumbnails != null) {
+        map['thumbnails'] = result.thumbnails.map((t) => {'url': t.url}).toList();
+      }
+      if (result.artist != null) map['artist'] = result.artist;
+      if (result.artists != null) {
+        map['artists'] = result.artists.map((a) => {'name': a.name}).toList();
+      }
+      if (result.album != null) map['album'] = result.album.title;
+      if (result.duration != null) {
+        map['duration'] = result.duration.inSeconds;
+      }
+      if (result.year != null) map['year'] = result.year;
+      // trackCount e resultType não existem, então não usamos
+    } catch (e) {
+      printERROR("Erro ao converter SearchResult: $e");
+    }
+    return map;
   }
 
-  /// Converte os items de uma seção da Home para Map
-  List<Map<String, dynamic>> _sectionItemsToMaps(List<SectionItem> items) {
+  /// Inferir categoria com base nos campos disponíveis
+  String _inferCategory(dynamic result) {
+    if (result.videoId != null) {
+      // Se tem videoId, é música ou vídeo. Verificar se tem duração curta (música)
+      if (result.duration != null && result.duration.inSeconds < 600) {
+        return 'Songs';
+      } else {
+        return 'Videos';
+      }
+    } else if (result.browseId != null) {
+      final id = result.browseId as String;
+      if (id.startsWith('MPRE')) return 'Albums';
+      if (id.startsWith('UC')) return 'Artists';
+      if (id.startsWith('VL')) {
+        // Playlist
+        final title = result.title?.toLowerCase() ?? '';
+        if (title.contains('community')) return 'Community playlists';
+        return 'Featured playlists';
+      }
+    } else if (result.playlistId != null) {
+      final title = result.title?.toLowerCase() ?? '';
+      if (title.contains('community')) return 'Community playlists';
+      return 'Featured playlists';
+    }
+    // fallback
+    return 'Songs';
+  }
+
+  /// Converte itens da Home (cada item pode ser um Map ou objeto)
+  List<Map<String, dynamic>> _sectionItemsToMaps(List<dynamic> items) {
     final List<Map<String, dynamic>> result = [];
     for (var item in items) {
       try {
         final map = <String, dynamic>{};
         map['title'] = item.title ?? '';
-        map['thumbnails'] = item.thumbnails?.map((t) => {'url': t.url}).toList() ?? [];
+        if (item.thumbnails != null) {
+          map['thumbnails'] = item.thumbnails.map((t) => {'url': t.url}).toList();
+        }
         if (item.videoId != null) {
           map['videoId'] = item.videoId;
           map['resultType'] = 'song';
         } else if (item.browseId != null) {
           map['browseId'] = item.browseId;
-          if (item.browseId!.startsWith('MPRE')) {
-            map['resultType'] = 'album';
-          } else if (item.browseId!.startsWith('UC')) {
-            map['resultType'] = 'artist';
-          } else if (item.browseId!.startsWith('VL')) {
-            map['playlistId'] = item.browseId!.substring(2);
+          final id = item.browseId as String;
+          if (id.startsWith('MPRE')) map['resultType'] = 'album';
+          else if (id.startsWith('UC')) map['resultType'] = 'artist';
+          else if (id.startsWith('VL')) {
+            map['playlistId'] = id.substring(2);
             map['resultType'] = 'playlist';
           }
         }
@@ -418,56 +422,81 @@ class MusicServices extends getx.GetxService {
     return result;
   }
 
-  /// Converte uma Song (do pacote) para o formato de track esperado
-  Map<String, dynamic> _songToTrack(Song song) {
-    return {
-      'videoId': song.videoId ?? '',
-      'title': song.title ?? '',
-      'artists': song.artists?.map((a) => {'name': a.name}).toList() ?? [],
-      'album': song.album != null ? {'title': song.album!.title} : {},
-      'thumbnails': song.thumbnails?.map((t) => {'url': t.url}).toList() ?? [],
-      'duration': song.duration?.inSeconds ?? 0,
-      'year': song.year?.toString() ?? '',
-      'playlistId': '',
-    };
+  /// Converte Song (objeto) para Map
+  Map<String, dynamic> _songToMap(dynamic song) {
+    final map = <String, dynamic>{};
+    try {
+      map['videoId'] = song.videoId ?? '';
+      map['title'] = song.title ?? '';
+      if (song.artists != null) {
+        map['artists'] = song.artists.map((a) => {'name': a.name}).toList();
+      } else {
+        map['artists'] = [];
+      }
+      if (song.album != null) {
+        map['album'] = {'title': song.album.title};
+      } else {
+        map['album'] = {};
+      }
+      if (song.thumbnails != null) {
+        map['thumbnails'] = song.thumbnails.map((t) => {'url': t.url}).toList();
+      } else {
+        map['thumbnails'] = [];
+      }
+      map['duration'] = song.duration?.inSeconds ?? 0;
+      map['year'] = song.year?.toString() ?? '';
+      map['playlistId'] = '';
+    } catch (e) {
+      printERROR("Erro ao converter Song: $e");
+    }
+    return map;
   }
 
-  /// Converte Playlist para o formato esperado
-  Map<String, dynamic> _playlistToMap(Playlist playlist) {
-    return {
-      'id': playlist.id ?? '',
-      'title': playlist.title ?? '',
-      'thumbnails': playlist.thumbnails?.map((t) => {'url': t.url}).toList() ?? [],
-      'description': playlist.description ?? '',
-      'trackCount': playlist.trackCount ?? 0,
-      'duration': playlist.duration?.toString() ?? '',
-      'tracks': playlist.songs.map((s) => _songToTrack(s)).toList(),
-      'author': playlist.author != null ? {'name': playlist.author!.name} : {},
-      'year': playlist.year?.toString() ?? '',
-      'duration_seconds': _sumTotalDuration(playlist.songs),
-    };
+  /// Converte Playlist para Map
+  Map<String, dynamic> _playlistToMap(dynamic playlist) {
+    final map = <String, dynamic>{};
+    try {
+      map['id'] = playlist.id ?? '';
+      map['title'] = playlist.title ?? '';
+      map['thumbnails'] = playlist.thumbnails?.map((t) => {'url': t.url}).toList() ?? [];
+      map['description'] = playlist.description ?? '';
+      map['trackCount'] = playlist.trackCount ?? 0;
+      map['duration'] = playlist.duration?.toString() ?? '';
+      map['tracks'] = playlist.songs.map((s) => _songToMap(s)).toList();
+      map['author'] = playlist.author != null ? {'name': playlist.author.name} : {};
+      map['year'] = playlist.year?.toString() ?? '';
+      map['duration_seconds'] = _sumTotalDuration(playlist.songs);
+    } catch (e) {
+      printERROR("Erro ao converter Playlist: $e");
+    }
+    return map;
   }
 
-  /// Converte Album para o formato esperado
-  Map<String, dynamic> _albumToMap(Album album) {
-    return {
-      'id': album.id ?? '',
-      'title': album.title ?? '',
-      'thumbnails': album.thumbnails?.map((t) => {'url': t.url}).toList() ?? [],
-      'description': album.description ?? '',
-      'trackCount': album.trackCount ?? 0,
-      'tracks': album.songs.map((s) => _songToTrack(s)).toList(),
-      'artists': album.artists?.map((a) => {'name': a.name}).toList() ?? [],
-      'year': album.year?.toString() ?? '',
-      'duration_seconds': _sumTotalDuration(album.songs),
-      'other_versions': [],
-    };
+  /// Converte Album para Map
+  Map<String, dynamic> _albumToMap(dynamic album) {
+    final map = <String, dynamic>{};
+    try {
+      map['id'] = album.id ?? '';
+      map['title'] = album.title ?? '';
+      map['thumbnails'] = album.thumbnails?.map((t) => {'url': t.url}).toList() ?? [];
+      map['description'] = album.description ?? '';
+      map['trackCount'] = album.trackCount ?? 0;
+      map['tracks'] = album.songs.map((s) => _songToMap(s)).toList();
+      map['artists'] = album.artists?.map((a) => {'name': a.name}).toList() ?? [];
+      map['year'] = album.year?.toString() ?? '';
+      map['duration_seconds'] = _sumTotalDuration(album.songs);
+      map['other_versions'] = [];
+    } catch (e) {
+      printERROR("Erro ao converter Album: $e");
+    }
+    return map;
   }
 
-  int _sumTotalDuration(List<Song> songs) {
+  int _sumTotalDuration(List<dynamic> songs) {
     int total = 0;
     for (var song in songs) {
-      total += song.duration?.inSeconds ?? 0;
+      final dur = song.duration?.inSeconds ?? 0;
+      total += dur.toInt(); // converte double para int
     }
     return total;
   }
