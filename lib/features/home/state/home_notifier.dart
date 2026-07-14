@@ -31,7 +31,19 @@ class HomeNotifier extends AsyncNotifier<List<dynamic>> {
     final result = await AsyncValue.guard(
         () => ref.read(searchCoordinatorProvider).getHome(limit: limit));
     state = result;
-    return result.valueOrNull ?? const [];
+
+    // DIAGNÓSTICO: antes, se todas as fontes (YT/Piped/Jamendo) falhassem,
+    // esse erro era descartado aqui e a Home simplesmente ficava em branco
+    // sem nenhuma mensagem. Agora o erro real é repassado pra cima —
+    // HomeScreenController.loadContentFromNetwork() já tem um try/catch
+    // que mostra esse erro num Get.snackbar na tela (não precisa de
+    // terminal pra ver).
+    if (result.hasError) {
+      Error.throwWithStackTrace(
+          result.error!, result.stackTrace ?? StackTrace.current);
+    }
+
+    return result.value;
   }
 
   /// Camada de abstração do Orquestrador para os Charts (Trending + Top
