@@ -1,7 +1,7 @@
 // ignore_for_file: constant_identifier_names
 
 import 'package:audio_service/audio_service.dart';
-import 'package:dart_ytmusic_api/dart_ytmusic_api.dart';
+import 'package:dart_ytmusic_api/yt_music.dart';
 import 'package:get/get.dart' as getx;
 import 'package:hive/hive.dart';
 
@@ -26,7 +26,15 @@ class MusicServices extends getx.GetxService {
   // ============================================================
   //  CLIENTE DO DART_YTMUSIC_API (versão 1.3.7)
   // ============================================================
-  final YtMusicApi _ytApi = YtMusicApi(hl: 'pt-BR');
+  final YTMusic _ytApi = YTMusic();
+  Future<void>? _initFuture;
+
+  /// Garante que _ytApi.initialize() rodou antes de qualquer chamada.
+  /// Chamadas subsequentes reutilizam o mesmo Future (não reinicializa).
+  Future<void> _ensureInitialized() {
+    _initFuture ??= _ytApi.initialize(hl: 'pt-BR');
+    return _initFuture!;
+  }
 
   // ============================================================
   //  INICIALIZAÇÃO
@@ -35,6 +43,7 @@ class MusicServices extends getx.GetxService {
   void onInit() {
     super.onInit();
     printINFO("🎵 MusicServices inicializado com dart_ytmusic_api 1.3.7");
+    _ensureInitialized();
   }
 
   set hlCode(String code) {
@@ -58,6 +67,7 @@ class MusicServices extends getx.GetxService {
   }) async {
     try {
       printINFO("🔍 Buscando via dart_ytmusic_api: '$query'");
+      await _ensureInitialized();
       final results = await _ytApi.search(query);
 
       final Map<String, List<Map<String, dynamic>>> categorized = {
@@ -96,6 +106,7 @@ class MusicServices extends getx.GetxService {
   Future<dynamic> getHome({int limit = 4}) async {
     try {
       printINFO("🏠 Buscando Home via dart_ytmusic_api (getHomeSections)...");
+      await _ensureInitialized();
       final sections = await _ytApi.getHomeSections();
 
       final List<Map<String, dynamic>> result = [];
@@ -128,6 +139,7 @@ class MusicServices extends getx.GetxService {
       {String? countryCode}) async {
     printINFO("⚠️ getCharts: usando search como fallback.");
     try {
+      await _ensureInitialized();
       final results = await _ytApi.search(category);
       if (results.isEmpty) return [];
       final chartSection = {
@@ -154,6 +166,7 @@ class MusicServices extends getx.GetxService {
     bool onlyRelated = false,
   }) async {
     try {
+      await _ensureInitialized();
       if (videoId.isNotEmpty) {
         printINFO("🎵 Obtendo música: $videoId");
         // Usa getUpNexts para obter a música? Não, melhor usar getSong (se existir) ou getPlaylistVideos
@@ -217,6 +230,7 @@ class MusicServices extends getx.GetxService {
     int suggestionsLimit = 0,
   }) async {
     try {
+      await _ensureInitialized();
       if (playlistId != null) {
         printINFO("📋 Obtendo playlist: $playlistId");
         final playlist = await _ytApi.getPlaylist(playlistId);
@@ -239,6 +253,7 @@ class MusicServices extends getx.GetxService {
   Future<Map<String, dynamic>> getArtist(String artistId) async {
     try {
       printINFO("🎤 Obtendo artista: $artistId");
+      await _ensureInitialized();
       final artist = await _ytApi.getArtist(artistId);
       // Também buscamos músicas, álbuns e singles para enriquecer
       final songs = await _ytApi.getArtistSongs(artistId);
@@ -283,6 +298,7 @@ class MusicServices extends getx.GetxService {
   }) async {
     printINFO("⚠️ getArtistRelatedContent: usando getArtistSongs/Albums/Singles.");
     try {
+      await _ensureInitialized();
       List<dynamic> items = [];
       final lowerTab = tabName.toLowerCase();
       if (lowerTab.contains('song')) {
@@ -333,6 +349,7 @@ class MusicServices extends getx.GetxService {
   // ------------------------------------------------------------------
   Future<String> getSongYear(String songId) async {
     try {
+      await _ensureInitialized();
       final results = await _ytApi.search(songId);
       final song = results.firstWhere(
         (item) => item.videoId == songId,
@@ -350,6 +367,7 @@ class MusicServices extends getx.GetxService {
   // ------------------------------------------------------------------
   Future<List> getSongWithId(String songId) async {
     try {
+      await _ensureInitialized();
       final results = await _ytApi.search(songId);
       final song = results.firstWhere(
         (item) => item.videoId == songId,
@@ -374,6 +392,7 @@ class MusicServices extends getx.GetxService {
   Future<dynamic> _getLyricsAsync(String videoId) async {
     try {
       printINFO("📝 Obtendo letras para: $videoId");
+      await _ensureInitialized();
       final lyrics = await _ytApi.getLyrics(videoId);
       if (lyrics != null) {
         return lyrics.lines.map((line) => line.text).join('\n');
@@ -394,6 +413,7 @@ class MusicServices extends getx.GetxService {
 
   Future<dynamic> _getContentRelatedToSongAsync(String videoId) async {
     try {
+      await _ensureInitialized();
       final upNexts = await _ytApi.getUpNexts(videoId);
       return upNexts.map((item) => _searchResultToMap(item)).toList();
     } catch (e) {
@@ -599,8 +619,8 @@ class MusicServices extends getx.GetxService {
   int _sumTotalDuration(List<dynamic> songs) {
     int total = 0;
     for (var song in songs) {
-      final dur = song.duration?.inSeconds ?? 0;
-      total += dur.toInt();
+      final int dur = (song.duration?.inSeconds as int?) ?? 0;
+      total += dur;
     }
     return total;
   }
