@@ -25,6 +25,7 @@ class YouTubeMusicApi {
     }
   };
 
+  // 🔥 CORRIGIDO: aceita Map<String, dynamic> e retorna Map<String, dynamic>
   Future<Map<String, dynamic>> _post(String endpoint, Map<String, dynamic> data) async {
     final url = Uri.parse('$baseUrl$endpoint$fixedParms');
     try {
@@ -53,7 +54,7 @@ class YouTubeMusicApi {
 
   /// Retorna a Home do YouTube Music já parseada para o formato que a UI espera
   Future<List<Map<String, dynamic>>> getHome({int limit = 4}) async {
-    final data = Map.from(_context);
+    final Map<String, dynamic> data = Map<String, dynamic>.from(_context);
     data['browseId'] = 'FEmusic_home';
     final response = await _post('browse', data);
     return _parseHome(response);
@@ -61,7 +62,7 @@ class YouTubeMusicApi {
 
   /// Retorna a busca já categorizada (Songs, Videos, Albums, Artists, Playlists)
   Future<Map<String, dynamic>> search(String query, {int limit = 30}) async {
-    final data = Map.from(_context);
+    final Map<String, dynamic> data = Map<String, dynamic>.from(_context);
     data['query'] = query;
     // Parâmetro para buscar tudo (sem filtro específico)
     final response = await _post('search', data);
@@ -76,7 +77,6 @@ class YouTubeMusicApi {
   List<Map<String, dynamic>> _parseHome(Map<String, dynamic> response) {
     final List<Map<String, dynamic>> sections = [];
     try {
-      // Navega até os contents da home
       final contents = response['contents']
           ?['singleColumnBrowseResultsRenderer']
           ?['tabs']?[0]
@@ -129,17 +129,14 @@ class YouTubeMusicApi {
   Map<String, dynamic> _parseItem(Map<String, dynamic> renderer) {
     final Map<String, dynamic> item = {};
     try {
-      // Título
       final title = _getText(renderer['title']);
       if (title.isNotEmpty) item['title'] = title;
 
-      // Thumbnails
       final thumbnails = renderer['thumbnail']?['thumbnails'] as List?;
       if (thumbnails != null && thumbnails.isNotEmpty) {
         item['thumbnails'] = thumbnails;
       }
 
-      // ID (videoId, browseId, playlistId)
       final navigate = renderer['navigationEndpoint'];
       if (navigate != null) {
         if (navigate['watchEndpoint'] != null) {
@@ -154,14 +151,12 @@ class YouTubeMusicApi {
         }
       }
 
-      // Artistas (subtitle)
       final subtitle = renderer['subtitle']?['runs'] as List?;
       if (subtitle != null && subtitle.isNotEmpty) {
         final artistName = subtitle.where((run) => run['text'] != null).map((run) => run['text']).join(' ');
         if (artistName.isNotEmpty) item['artist'] = artistName;
       }
 
-      // ResultType (inferido)
       if (item.containsKey('videoId')) {
         item['resultType'] = 'song';
       } else if (item.containsKey('playlistId')) {
@@ -178,7 +173,6 @@ class YouTubeMusicApi {
     return item;
   }
 
-  /// Extrai categorias da busca
   Map<String, dynamic> _parseSearch(Map<String, dynamic> response) {
     final Map<String, dynamic> categories = {
       'Songs': [],
@@ -206,7 +200,6 @@ class YouTubeMusicApi {
           final items = _parseShelfItems(shelf);
           if (items.isEmpty) continue;
 
-          // Determina a categoria com base no título da aba
           String categoryKey = 'Songs';
           final lowerTitle = title.toLowerCase();
           if (lowerTitle.contains('song') || lowerTitle.contains('track')) categoryKey = 'Songs';
@@ -217,7 +210,6 @@ class YouTubeMusicApi {
             if (lowerTitle.contains('community')) categoryKey = 'Community playlists';
             else categoryKey = 'Featured playlists';
           } else {
-            // Fallback: tenta inferir pelo primeiro item
             if (items.isNotEmpty && items.first.containsKey('videoId')) categoryKey = 'Songs';
             else if (items.isNotEmpty && items.first.containsKey('browseId')) categoryKey = 'Albums';
           }
@@ -229,7 +221,6 @@ class YouTubeMusicApi {
       printERROR("Erro ao parsear Search: $e");
     }
 
-    // Remove categorias vazias
     categories.removeWhere((key, value) => value.isEmpty);
     return categories;
   }
@@ -245,7 +236,6 @@ class YouTubeMusicApi {
       if (renderer != null) {
         final parsed = _parseItem(renderer);
         if (parsed.isNotEmpty) {
-          // Adiciona resultType se não tiver
           if (!parsed.containsKey('resultType')) {
             if (parsed.containsKey('videoId')) parsed['resultType'] = 'song';
             else if (parsed.containsKey('playlistId')) parsed['resultType'] = 'playlist';
@@ -276,11 +266,11 @@ class YouTubeMusicApi {
   }
 
   // ============================================================
-  //  OUTROS MÉTODOS (brutos, sem parse ainda)
+  //  OUTROS MÉTODOS (brutos, com casting)
   // ============================================================
 
   Future<Map<String, dynamic>> getSong(String videoId) async {
-    final data = Map.from(_context);
+    final Map<String, dynamic> data = Map<String, dynamic>.from(_context);
     data['videoId'] = videoId;
     data['playbackContext'] = {
       'contentPlaybackContext': {
@@ -291,25 +281,25 @@ class YouTubeMusicApi {
   }
 
   Future<Map<String, dynamic>> getPlaylist(String playlistId) async {
-    final data = Map.from(_context);
+    final Map<String, dynamic> data = Map<String, dynamic>.from(_context);
     data['browseId'] = 'VL$playlistId';
     return await _post('browse', data);
   }
 
   Future<Map<String, dynamic>> getAlbum(String albumId) async {
-    final data = Map.from(_context);
+    final Map<String, dynamic> data = Map<String, dynamic>.from(_context);
     data['browseId'] = albumId;
     return await _post('browse', data);
   }
 
   Future<Map<String, dynamic>> getArtist(String artistId) async {
-    final data = Map.from(_context);
+    final Map<String, dynamic> data = Map<String, dynamic>.from(_context);
     data['browseId'] = artistId;
     return await _post('browse', data);
   }
 
   Future<Map<String, dynamic>> getWatchPlaylist(String videoId) async {
-    final data = Map.from(_context);
+    final Map<String, dynamic> data = Map<String, dynamic>.from(_context);
     data['videoId'] = videoId;
     data['playlistId'] = 'RDAMVM$videoId';
     data['enablePersistentPlaylistPanel'] = true;
