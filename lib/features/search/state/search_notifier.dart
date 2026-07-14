@@ -57,7 +57,10 @@ class SearchNotifier extends AsyncNotifier<SearchResult> {
           result.error!, result.stackTrace ?? StackTrace.current);
     }
 
-    return result.value;
+    // Mesmo caso do home_notifier.dart: já garantimos (throw acima) que
+    // não há erro aqui, mas `.value` no Riverpod é sempre `T?`, daí o `!`
+    // pra bater com o retorno `Future<SearchResult>` (não nullable).
+    return result.value!;
   }
 
   /// Busca de uma aba (Songs/Videos/Albums/...) — substitui a chamada de
