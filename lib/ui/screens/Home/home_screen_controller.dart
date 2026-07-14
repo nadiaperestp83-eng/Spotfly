@@ -5,6 +5,8 @@ import 'package:hive/hive.dart';
 
 import '/models/media_Item_builder.dart';
 import '/ui/player/player_controller.dart';
+import '../../../core/riverpod/app_provider_container.dart';
+import '../../../features/home/state/home_notifier.dart';
 import '../../../utils/update_check_flag_file.dart';
 import '../../../utils/helper.dart';
 import '/models/album.dart';
@@ -92,9 +94,16 @@ class HomeScreenController extends GetxController {
     networkError.value = false;
     try {
       List middleContentTemp = [];
-      final homeContentListMap = await _musicServices.getHome(
-          limit:
-              Get.find<SettingsScreenController>().noOfHomeScreenContent.value);
+      // Antes: final homeContentListMap = await _musicServices.getHome(limit: ...);
+      // Agora: passa pelo Orquestrador (fallback YT -> Piped -> Jamendo),
+      // que devolve os dados no MESMO formato de sempre — o resto desta
+      // função não muda.
+      final homeContentListMap = await appProviderContainer
+          .read(homeNotifierProvider.notifier)
+          .fetchHomeContent(
+              limit: Get.find<SettingsScreenController>()
+                  .noOfHomeScreenContent
+                  .value);
       if (contentType == "TR") {
         final index = homeContentListMap
             .indexWhere((element) => element['title'] == "Trending");
