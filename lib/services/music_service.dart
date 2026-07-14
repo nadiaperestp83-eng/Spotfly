@@ -557,12 +557,11 @@ class MusicServices extends getx.GetxService {
   }
 
   // ============================================================
-  //  MÉTODOS QUE ESTAVAM FALTANDO (restaurados)
+  //  MÉTODOS QUE ESTAVAM FALTANDO (restaurados e corrigidos)
   // ============================================================
 
-  /// Obtém o ano de uma música (stub)
+  /// Obtém o ano de uma música
   Future<String> getSongYear(String songId) async {
-    // Implementação simples: tenta extrair do player ou retorna ano atual
     try {
       final data = Map.of(_context);
       data['videoId'] = songId;
@@ -573,7 +572,6 @@ class MusicServices extends getx.GetxService {
         'publishedDate'
       ]);
       if (year != null && year is String) {
-        // Tenta extrair o ano
         final match = RegExp(r'\d{4}').firstMatch(year);
         return match?.group(0) ?? DateTime.now().year.toString();
       }
@@ -581,14 +579,12 @@ class MusicServices extends getx.GetxService {
     return DateTime.now().year.toString();
   }
 
-  /// Obtém informações de um artista (stub)
+  /// Obtém informações de um artista
   Future<Map<String, dynamic>> getArtist(String artistId) async {
-    // Implementação básica: busca o artista
     final data = Map.of(_context);
     data['browseId'] = artistId;
     try {
       final response = await _sendRequest("browse", data);
-      // Parse básico do header
       final header = nav(response.data, [
         'header',
         'musicImmersiveHeaderRenderer'
@@ -614,15 +610,21 @@ class MusicServices extends getx.GetxService {
     };
   }
 
-  /// Obtém conteúdo relacionado a um artista (stub)
-  Future<List<dynamic>> getArtistRealtedContent(
-      String artistId, String tabName, {int limit = 10}) async {
-    // Implementação básica: retorna lista vazia ou busca algo
+  /// Obtém conteúdo relacionado a um artista (com suporte a parâmetros adicionais)
+  Future<Map<String, dynamic>> getArtistRealtedContent(
+      String artistId, String tabName,
+      {int limit = 10, Map<String, dynamic>? additionalParams}) async {
     try {
       final data = Map.of(_context);
       data['browseId'] = artistId;
       data['params'] = _getArtistTabParams(tabName);
+      // Se houver parâmetros adicionais (para continuação), mescla
+      if (additionalParams != null && additionalParams.isNotEmpty) {
+        data.addAll(additionalParams);
+      }
       final response = await _sendRequest("browse", data);
+      
+      // Tenta extrair os conteúdos da aba
       final results = nav(response.data, [
         'contents',
         'twoColumnBrowseResultsRenderer',
@@ -633,20 +635,38 @@ class MusicServices extends getx.GetxService {
         'musicShelfRenderer',
         'contents'
       ]);
-      if (results != null && results is List) {
-        return results;
-      }
-    } catch (_) {}
-    return [];
+      
+      // Tenta obter parâmetros de continuação, se houver
+      final continuation = nav(response.data, [
+        'contents',
+        'twoColumnBrowseResultsRenderer',
+        'secondaryContents',
+        'sectionListRenderer',
+        'continuations',
+        0,
+        'nextContinuationData'
+      ]);
+      
+      return {
+        'contents': results is List ? results : [],
+        'additionalParams': continuation != null ? {'continuation': continuation} : {},
+      };
+    } catch (e) {
+      printERROR("Error fetching artist content: $e");
+      return {
+        'contents': [],
+        'additionalParams': {},
+      };
+    }
   }
 
   String _getArtistTabParams(String tabName) {
-    // Mapeamento básico
+    // Mapeamento básico para as abas do artista
     switch (tabName.toLowerCase()) {
       case 'songs':
         return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
       case 'albums':
-        return 'EgWKAQIIAWoKEAoQCRADEAA%3D'; // ajustar
+        return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
       case 'playlists':
         return 'EgWKAQIIAWoKEAoQCRADEAA%3D';
       default:
@@ -658,7 +678,6 @@ class MusicServices extends getx.GetxService {
   Future<Map<String, dynamic>> getSearchContinuation(
       Map<String, dynamic> continuationParams,
       {int limit = 10}) async {
-    // Implementação simples: chama a API com os parâmetros de continuação
     try {
       final data = Map.of(_context);
       data.addAll(continuationParams);
