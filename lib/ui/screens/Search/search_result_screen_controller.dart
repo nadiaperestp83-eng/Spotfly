@@ -55,40 +55,62 @@ class SearchResultScreenController extends GetxController
       final filterParams =
           (resultContent['searchEndpoint'] as Map?)?[tabName] as String?;
 
-      if (filterParams == null) {
-        // Fonte de fallback (Piped/Jamendo): não tem abas/paginação reais.
-        // Reaproveita o que já veio na busca inicial.
-        separatedResultContent[tabName] =
-            List.from(resultContent[tabName] ?? []);
-        additionalParamNext[tabName] = {};
-      } else {
-        final result = await appProviderContainer
-            .read(searchNotifierProvider.notifier)
-            .searchTab(queryString.value,
-                tabName: tabName, filterParams: filterParams, limit: itemCount);
-        separatedResultContent[tabName] = result.categories[tabName];
-        additionalParamNext[tabName] = result.continuationParams[tabName] ?? {};
-      }
+      try {
+        if (filterParams == null) {
+          // Fonte de fallback (Piped/Jamendo): não tem abas/paginação reais.
+          // Reaproveita o que já veio na busca inicial.
+          separatedResultContent[tabName] =
+              List.from(resultContent[tabName] ?? []);
+          additionalParamNext[tabName] = {};
+        } else {
+          // Antes: sem try/catch aqui. Se o Orquestrador (SearchCoordinator)
+          // falhasse pra essa aba (ex: todas as fontes indisponíveis), a
+          // exceção subia sem tratamento, `isSeparatedResultContentFetced`
+          // nunca virava true, e a aba ficava girando pra sempre — esse
+          // era o "busca refinada não funciona".
+          final result = await appProviderContainer
+              .read(searchNotifierProvider.notifier)
+              .searchTab(queryString.value,
+                  tabName: tabName,
+                  filterParams: filterParams,
+                  limit: itemCount);
+          separatedResultContent[tabName] = result.categories[tabName] ?? [];
+          additionalParamNext[tabName] =
+              result.continuationParams[tabName] ?? {};
+        }
 
-      isSeparatedResultContentFetced.value = true;
-
-      final hasContinuation =
-          (additionalParamNext[tabName] as Map).isNotEmpty;
-      if (hasContinuation) {
-        final scrollController = scrollControllers[tabName];
-        (scrollController)!.addListener(() {
-          double maxScroll = scrollController.position.maxScrollExtent;
-          double currentScroll = scrollController.position.pixels;
-          if (currentScroll >= maxScroll / 2 &&
-              additionalParamNext[tabName]['additionalParams'] !=
-                  '&ctoken=null&continuation=null') {
-            if (!continuationInProgress) {
-              printINFO("Acchhsk");
-              continuationInProgress = true;
-              getContinuationContents();
+        final hasContinuation =
+            (additionalParamNext[tabName] as Map).isNotEmpty;
+        if (hasContinuation) {
+          final scrollController = scrollControllers[tabName];
+          (scrollController)!.addListener(() {
+            double maxScroll = scrollController.position.maxScrollExtent;
+            double currentScroll = scrollController.position.pixels;
+            if (currentScroll >= maxScroll / 2 &&
+                additionalParamNext[tabName]['additionalParams'] !=
+                    '&ctoken=null&continuation=null') {
+              if (!continuationInProgress) {
+                printINFO("Acchhsk");
+                continuationInProgress = true;
+                getContinuationContents();
+              }
             }
-          }
-        });
+          });
+        }
+      } catch (e, st) {
+        // Nunca deixa a aba presa em loading: sempre marca como resolvida
+        // e mostra o erro real na tela pra diagnóstico direto no celular.
+        printERROR("Busca da aba '$tabName' falhou: $e");
+        printERROR(st.toString());
+        separatedResultContent[tabName] = [];
+        additionalParamNext[tabName] = {};
+        Get.snackbar(
+          'Erro na aba "$tabName"',
+          e.toString(),
+          duration: const Duration(seconds: 10),
+          isDismissible: true,
+          snackPosition: SnackPosition.BOTTOM,
+        );
       }
     }
     isSeparatedResultContentFetced.value = true;
@@ -102,16 +124,32 @@ class SearchResultScreenController extends GetxController
       return;
     }
 
-    final result = await appProviderContainer
-        .read(searchNotifierProvider.notifier)
-        .loadMoreTab(tabName);
+    try {
+      final result = await appProviderContainer
+          .read(searchNotifierProvider.notifier)
+          .loadMoreTab(tabName);
 
-    separatedResultContent[tabName] =
-        result.categories[tabName] ?? separatedResultContent[tabName];
-    additionalParamNext[tabName] = result.continuationParams[tabName] ?? {};
-    separatedResultContent.refresh();
-
-    continuationInProgress = false;
+      separatedResultContent[tabName] =
+          result.categories[tabName] ?? separatedResultContent[tabName];
+      additionalParamNext[tabName] = result.continuationParams[tabName] ?? {};
+      separatedResultContent.refresh();
+    } catch (e, st) {
+      // Antes: sem try/catch. Um erro aqui deixava continuationInProgress
+      // travado em true, bloqueando qualquer novo carregamento por scroll
+      // até o usuário sair e voltar pra tela.
+      printERROR("Continuação da aba '$tabName' falhou: $e");
+      printERROR(st.toString());
+      additionalParamNext[tabName] = {};
+      Get.snackbar(
+        'Erro ao carregar mais itens ("$tabName")',
+        e.toString(),
+        duration: const Duration(seconds: 10),
+        isDismissible: true,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      continuationInProgress = false;
+    }
   }
 
   void viewAllCallback(String text) {
@@ -127,6 +165,24 @@ class SearchResultScreenController extends GetxController
       final result = await appProviderContainer
           .read(searchNotifierProvider.notifier)
           .search(args);
+
+      // Diagnóstico: SearchNotifier.search() usa AsyncValue.guard, então
+      // mesmo se TODAS as fontes falharem ele nunca lança exceção aqui —
+      // só devolve um SearchResult vazio, indistinguível de "sem
+      // resultados pra essa busca". Checando o estado bruto do provider
+      // conseguimos saber se foi erro de verdade e mostrar na tela.
+      final asyncState = appProviderContainer.read(searchNotifierProvider);
+      if (asyncState.hasError) {
+        printERROR("Busca inicial falhou: ${asyncState.error}");
+        Get.snackbar(
+          'Erro na busca',
+          asyncState.error.toString(),
+          duration: const Duration(seconds: 10),
+          isDismissible: true,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
+
       resultContent.value = Map<String, dynamic>.from(result.categories);
 
       final allKeys = resultContent.keys.where((element) => ([
