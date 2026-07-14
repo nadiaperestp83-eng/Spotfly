@@ -103,21 +103,32 @@ class PlaylistScreenController extends PlaylistAlbumScreenControllerBase
       if (await checkIfAddedToLibrary(playlistId)) {
         final songsBox = await Hive.openBox(playlistId);
         if (songsBox.values.isEmpty) {
-          _fetchSongOnline(playlistId, isIdOnly, isPipedPlaylist).then((value) {
-            updateSongsIntoDb();
-          });
+          // DIAGNÓSTICO: antes essa chamada não tinha "await", então se
+          // _fetchSongOnline falhasse a exceção virava um erro "não
+          // tratado" (unhandled) que nunca chegava até esse catch — a
+          // playlist ficava vazia pra sempre, sem nenhuma mensagem.
+          await _fetchSongOnline(playlistId, isIdOnly, isPipedPlaylist);
+          updateSongsIntoDb();
         } else {
           // If the playlist is offline, fetch the songs from the local database
           // Playlist details are already fetched in _checkIfAddedToLibrary method
           fetchSongsfromDatabase(playlistId);
         }
       } else {
-        _fetchSongOnline(playlistId, isIdOnly, isPipedPlaylist);
+        // Mesma correção: agora aguarda de verdade, então erro de rede
+        // cai no catch abaixo em vez de sumir.
+        await _fetchSongOnline(playlistId, isIdOnly, isPipedPlaylist);
       }
       isContentFetched.value = true;
     } catch (e) {
       // Handle any errors that occur during the fetch
       printERROR("Error fetching playlist details: $e");
+      isContentFetched.value = true;
+      if (Get.context != null) {
+        ScaffoldMessenger.of(Get.context!).showSnackBar(snackbar(
+            Get.context!, "Erro ao carregar playlist: $e",
+            size: SanckBarSize.MEDIUM));
+      }
     }
   }
 
