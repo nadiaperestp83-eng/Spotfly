@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:audio_service/audio_service.dart';
 import 'package:get/get.dart' as getx;
 import 'package:hive/hive.dart';
-import 'package:http/http.dart' as http; // Usando http em vez de Dio para evitar problemas de SSL/Timeout
+import 'package:http/http.dart' as http;
 
 import '../utils/helper.dart';
 
@@ -25,14 +25,11 @@ enum AudioQuality {
 
 class MusicServices extends getx.GetxService {
   // ============================================================
-  //  CONFIGURAÇÃO DO PROXY - URL CORRIGIDA
+  //  CONFIGURAÇÃO DO PROXY
   // ============================================================
   static const String _proxyBaseUrl =
       'https://yt-proxy-music-production.up.railway.app';
 
-  // ============================================================
-  //  INICIALIZAÇÃO
-  // ============================================================
   @override
   void onInit() {
     super.onInit();
@@ -44,7 +41,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ============================================================
-  //  MÉTODO PRIVADO PARA REQUISIÇÕES (usando http)
+  //  MÉTODO PRIVADO PARA REQUISIÇÕES
   // ============================================================
   Future<dynamic> _get(String endpoint, {Map<String, dynamic>? queryParams}) async {
     try {
@@ -123,19 +120,42 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 2. GET HOME - não suportado (retorna vazio)
+  // 2. GET HOME - usando o proxy (ou fallback)
   // ------------------------------------------------------------------
   Future<dynamic> getHome({int limit = 4}) async {
-    printINFO("⚠️ getHome não suportado pelo proxy. Retornando lista vazia.");
-    return [];
+    printINFO("🏠 Buscando conteúdo da Home...");
+    try {
+      // Tenta obter dados de "home" via busca por "top songs"
+      // Como não temos um endpoint /home, usamos uma busca fixa
+      final searchResult = await search('top songs', limit: limit);
+      if (searchResult.isNotEmpty) {
+        // Converte o resultado em uma lista no formato que a home espera
+        final List<Map<String, dynamic>> homeContent = [];
+        for (var entry in searchResult.entries) {
+          homeContent.add({
+            'title': entry.key,
+            'contents': entry.value,
+          });
+        }
+        printINFO("✅ Home carregada com ${homeContent.length} seções");
+        return homeContent;
+      } else {
+        // Fallback: retorna uma lista vazia (a home mostrará "sem conteúdo")
+        printINFO("⚠️ Nenhum conteúdo para a Home.");
+        return [];
+      }
+    } catch (e) {
+      printERROR("❌ Erro ao carregar Home: $e");
+      return [];
+    }
   }
 
   // ------------------------------------------------------------------
-  // 3. GET CHARTS - não suportado
+  // 3. GET CHARTS - não suportado (mas não quebra)
   // ------------------------------------------------------------------
   Future<List<Map<String, dynamic>>> getCharts(String category,
       {String? countryCode}) async {
-    printINFO("⚠️ getCharts não suportado pelo proxy. Retornando vazio.");
+    printINFO("⚠️ getCharts não suportado. Retornando vazio.");
     return [];
   }
 
@@ -210,7 +230,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 6. GET ARTIST - stub (não implementado no proxy)
+  // 6. GET ARTIST - stub (melhorado)
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getArtist(String artistId) async {
     printINFO("⚠️ getArtist não implementado no proxy. Retornando stub.");
@@ -225,7 +245,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 7. GET ARTIST RELATED CONTENT (nome correto)
+  // 7. GET ARTIST RELATED CONTENT (stub)
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getArtistRelatedContent(
     String artistId,
@@ -233,14 +253,14 @@ class MusicServices extends getx.GetxService {
     int limit = 10,
     Map<String, dynamic>? additionalParams,
   }) async {
-    printINFO("⚠️ getArtistRelatedContent não implementado no proxy. Retornando vazio.");
+    printINFO("⚠️ getArtistRelatedContent não implementado.");
     return {
       'contents': [],
       'additionalParams': {},
     };
   }
 
-  // ⚠️ MÉTODO COM O NOME EXATO QUE O CONTROLLER ESPERA (com typo)
+  // Método com o nome exato que o controller espera (com typo)
   Future<Map<String, dynamic>> getArtistRealtedContent(
     String artistId,
     String tabName, {
@@ -258,12 +278,12 @@ class MusicServices extends getx.GetxService {
     Map<String, dynamic> continuationParams, {
     int limit = 10,
   }) async {
-    printINFO("⚠️ getSearchContinuation não suportado pelo proxy.");
+    printINFO("⚠️ getSearchContinuation não suportado.");
     return {};
   }
 
   // ------------------------------------------------------------------
-  // 9. GET SONG YEAR - via /get_song
+  // 9. GET SONG YEAR
   // ------------------------------------------------------------------
   Future<String> getSongYear(String songId) async {
     try {
@@ -280,7 +300,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 10. GET SONG WITH ID (para deep links)
+  // 10. GET SONG WITH ID (deep links)
   // ------------------------------------------------------------------
   Future<List> getSongWithId(String songId) async {
     try {
@@ -299,7 +319,7 @@ class MusicServices extends getx.GetxService {
   // 11. GET LYRICS - não suportado
   // ------------------------------------------------------------------
   dynamic getLyrics(String browseId) {
-    printINFO("⚠️ getLyrics não suportado pelo proxy.");
+    printINFO("⚠️ getLyrics não suportado.");
     return '';
   }
 
@@ -307,7 +327,7 @@ class MusicServices extends getx.GetxService {
   // 12. GET CONTENT RELATED TO SONG - stub
   // ------------------------------------------------------------------
   dynamic getContentRelatedToSong(String videoId, String hlCode) {
-    printINFO("⚠️ getContentRelatedToSong não suportado pelo proxy.");
+    printINFO("⚠️ getContentRelatedToSong não suportado.");
     return [];
   }
 
@@ -315,12 +335,12 @@ class MusicServices extends getx.GetxService {
   // 13. GET SEARCH SUGGESTIONS - stub
   // ------------------------------------------------------------------
   Future<List<String>> getSearchSuggestion(String queryStr) async {
-    printINFO("⚠️ getSearchSuggestion não suportado pelo proxy.");
+    printINFO("⚠️ getSearchSuggestion não suportado.");
     return [];
   }
 
   // ============================================================
-  //  FUNÇÕES AUXILIARES DE FORMATAÇÃO
+  //  FUNÇÕES AUXILIARES
   // ============================================================
 
   Map<String, dynamic> _categorizeSearchResults(List<dynamic> results) {
