@@ -26,10 +26,10 @@ enum AudioQuality {
 
 class MusicServices extends getx.GetxService {
   // ============================================================
-  //  CONFIGURAÇÃO DO PROXY (fallback)
+  //  CONFIGURAÇÃO DO PROXY (fallback) - PORTA 8080
   // ============================================================
   static const String _proxyBaseUrl =
-      'https://yt-proxy-music-production.up.railway.app';
+      'https://yt-proxy-music-production.up.railway.app:8080';
 
   // ============================================================
   //  CLIENTE DA API DO YOUTUBE MUSIC
@@ -192,7 +192,6 @@ class MusicServices extends getx.GetxService {
       } else if (playlistId != null) {
         printINFO("📋 Obtendo playlist: $playlistId via YouTubeMusicApi");
         final data = await _ytApi.getPlaylist(playlistId);
-        // Parse simples das faixas
         final tracks = _parseTracksFromPlaylist(data);
         return {
           'tracks': tracks,
@@ -461,7 +460,6 @@ class MusicServices extends getx.GetxService {
   // ============================================================
 
   Map<String, dynamic> _extractTrackFromYT(Map<String, dynamic> data) {
-    // Tenta extrair do player response
     try {
       final videoDetails = data['videoDetails'] ?? {};
       return {
@@ -475,16 +473,7 @@ class MusicServices extends getx.GetxService {
         'playlistId': '',
       };
     } catch (_) {
-      return {
-        'videoId': '',
-        'title': '',
-        'artists': [],
-        'album': {},
-        'thumbnails': [],
-        'duration': 0,
-        'year': '',
-        'playlistId': '',
-      };
+      return {};
     }
   }
 
@@ -532,7 +521,6 @@ class MusicServices extends getx.GetxService {
       'year': '',
       'duration_seconds': 0,
     };
-    // Tenta extrair título do header
     try {
       final header = data['header']?['musicDetailHeaderRenderer'];
       if (header != null) {
@@ -567,7 +555,6 @@ class MusicServices extends getx.GetxService {
         album['year'] = header['subtitle']?['runs']?[3]?['text'] ?? '';
         album['artists'] = header['subtitle']?['runs']?[1]?['text'] ?? '';
       }
-      // Tracks
       final contents = data['contents']
           ?['twoColumnBrowseResultsRenderer']
           ?['secondaryContents']
