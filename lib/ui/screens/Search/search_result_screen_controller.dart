@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get/get.dart';
 import 'package:harmonymusic/ui/screens/Settings/settings_screen_controller.dart';
 
+import '../../../core/models/search_result.dart';
 import '../../../core/riverpod/app_provider_container.dart';
 import '../../../features/search/state/search_notifier.dart';
 import '../../../utils/helper.dart';
 import '../Home/home_screen_controller.dart';
+import '/ui/widgets/snackbar.dart';
 import '/ui/widgets/sort_widget.dart';
 
 class SearchResultScreenController extends GetxController
@@ -111,6 +113,11 @@ class SearchResultScreenController extends GetxController
           }
         } catch (e) {
           printERROR("Erro na aba '$tabName': $e");
+          if (Get.context != null) {
+            ScaffoldMessenger.of(Get.context!).showSnackBar(snackbar(
+                Get.context!, "Erro na aba '$tabName': $e",
+                size: SanckBarSize.MEDIUM));
+          }
         }
       }
     }
@@ -130,6 +137,11 @@ class SearchResultScreenController extends GetxController
       separatedResultContent.refresh();
     } catch (e) {
       printERROR("Erro ao carregar mais itens: $e");
+      if (Get.context != null) {
+        ScaffoldMessenger.of(Get.context!).showSnackBar(snackbar(
+            Get.context!, "Erro ao carregar mais itens: $e",
+            size: SanckBarSize.MEDIUM));
+      }
     } finally {
       continuationInProgress = false;
     }
@@ -147,7 +159,22 @@ class SearchResultScreenController extends GetxController
     if (args == null) return;
     queryString.value = args;
 
-    final result = await appProviderContainer.read(searchNotifierProvider.notifier).search(args);
+    String? errorMessage;
+    SearchResult result;
+    try {
+      result = await appProviderContainer
+          .read(searchNotifierProvider.notifier)
+          .search(args);
+    } catch (e) {
+      // DIAGNÓSTICO: antes esse erro sumia (a tela só mostrava
+      // "categorias: nenhuma", sem dizer o motivo real). Agora a
+      // mensagem de exceção de verdade (rede, parsing, todas as fontes
+      // falharam, etc.) é guardada pra aparecer no diálogo de debug logo
+      // abaixo.
+      printERROR("Erro na busca inicial: $e");
+      errorMessage = e.toString();
+      result = const SearchResult(sourceId: 'none');
+    }
 
     // Guarda as chaves cruas retornadas pela fonte, antes de qualquer
     // normalização, só para fins de debug (dialog abaixo).
@@ -199,25 +226,29 @@ class SearchResultScreenController extends GetxController
 
     isResultContentFetced.value = true;
 
-    _maybeShowDebugCategoriesDialog(rawKeys, normalizedMap);
+    _maybeShowDebugCategoriesDialog(rawKeys, normalizedMap, errorMessage);
   }
 
-  /// Debug UI: se a busca não gerou nenhuma aba, ou se Songs/Videos vieram
-  /// vazios, mostra um diálogo com as chaves exatas recebidas da fonte.
-  /// Ajuda a diagnosticar rapidamente quando a API muda nomes de categoria
-  /// sem precisar olhar log.
-  void _maybeShowDebugCategoriesDialog(
-      List<String> rawKeys, Map<String, dynamic> normalizedMap) {
+  /// Debug UI: se a busca não gerou nenhuma aba, se Songs/Videos vieram
+  /// vazios, OU se houve um erro real na busca, mostra um diálogo com as
+  /// chaves exatas recebidas da fonte e (agora) a mensagem de erro de
+  /// verdade. Ajuda a diagnosticar rapidamente sem precisar de terminal.
+  void _maybeShowDebugCategoriesDialog(List<String> rawKeys,
+      Map<String, dynamic> normalizedMap, String? errorMessage) {
     final songsEmpty = (normalizedMap['Songs'] is! List) || (normalizedMap['Songs'] as List).isEmpty;
     final videosEmpty = (normalizedMap['Videos'] is! List) || (normalizedMap['Videos'] as List).isEmpty;
 
-    if (railItems.isEmpty || songsEmpty || videosEmpty) {
+    if (errorMessage != null || railItems.isEmpty || songsEmpty || videosEmpty) {
       final keysDescription = rawKeys.isEmpty ? '(nenhuma)' : rawKeys.join(', ');
+      final errorSection = errorMessage != null
+          ? '\n\nERRO REAL (antes ficava escondido):\n$errorMessage'
+          : '';
       Get.defaultDialog(
         title: 'Debug: categorias da busca',
         middleText:
             'O servidor retornou as seguintes categorias: $keysDescription\n\n'
-            'Abas exibidas: ${railItems.isEmpty ? '(nenhuma)' : railItems.join(', ')}',
+            'Abas exibidas: ${railItems.isEmpty ? '(nenhuma)' : railItems.join(', ')}'
+            '$errorSection',
         textConfirm: 'OK',
         onConfirm: () => Get.back(),
       );
