@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:harmonymusic/ui/screens/Settings/settings_screen_controller.dart';
 
+import '../../../core/riverpod/app_provider_container.dart';
+import '../../../features/search/state/search_notifier.dart';
 import '../../../utils/helper.dart';
 import '../Home/home_screen_controller.dart';
-import '/services/music_service.dart';
 import '/ui/widgets/sort_widget.dart';
 
 class SearchResultScreenController extends GetxController
@@ -14,7 +15,6 @@ class SearchResultScreenController extends GetxController
   final isSeparatedResultContentFetced = false.obs;
   final resultContent = <String, dynamic>{}.obs;
   final separatedResultContent = <String, dynamic>{}.obs;
-  final musicServices = Get.find<MusicServices>();
   final queryString = ''.obs;
   final railItems = <String>[].obs;
   final railitemHeight = Get.size.height.obs;
@@ -52,25 +52,44 @@ class SearchResultScreenController extends GetxController
             separatedResultContent[railItems[value - 1]].isEmpty)) {
       final tabName = railItems[value - 1];
       final itemCount = (tabName == 'Songs' || tabName == 'Videos') ? 25 : 10;
-      final x = await musicServices.search(queryString.value,
-          filter: tabName.replaceAll(" ", "_").toLowerCase(), limit: itemCount, filterParams: resultContent['searchEndpoint'][tabName]);
-      separatedResultContent[tabName] = x[tabName];
-      additionalParamNext[tabName] = x['params'];
+      final filterParams =
+          (resultContent['searchEndpoint'] as Map?)?[tabName] as String?;
+
+      if (filterParams == null) {
+        // Fonte de fallback (Piped/Jamendo): não tem abas/paginação reais.
+        // Reaproveita o que já veio na busca inicial.
+        separatedResultContent[tabName] =
+            List.from(resultContent[tabName] ?? []);
+        additionalParamNext[tabName] = {};
+      } else {
+        final result = await appProviderContainer
+            .read(searchNotifierProvider.notifier)
+            .searchTab(queryString.value,
+                tabName: tabName, filterParams: filterParams, limit: itemCount);
+        separatedResultContent[tabName] = result.categories[tabName];
+        additionalParamNext[tabName] = result.continuationParams[tabName] ?? {};
+      }
+
       isSeparatedResultContentFetced.value = true;
-      final scrollController = scrollControllers[tabName];
-      (scrollController)!.addListener(() {
-        double maxScroll = scrollController.position.maxScrollExtent;
-        double currentScroll = scrollController.position.pixels;
-        if (currentScroll >= maxScroll / 2 &&
-            additionalParamNext[tabName]['additionalParams'] !=
-                '&ctoken=null&continuation=null') {
-          if (!continuationInProgress) {
-            printINFO("Acchhsk");
-            continuationInProgress = true;
-            getContinuationContents();
+
+      final hasContinuation =
+          (additionalParamNext[tabName] as Map).isNotEmpty;
+      if (hasContinuation) {
+        final scrollController = scrollControllers[tabName];
+        (scrollController)!.addListener(() {
+          double maxScroll = scrollController.position.maxScrollExtent;
+          double currentScroll = scrollController.position.pixels;
+          if (currentScroll >= maxScroll / 2 &&
+              additionalParamNext[tabName]['additionalParams'] !=
+                  '&ctoken=null&continuation=null') {
+            if (!continuationInProgress) {
+              printINFO("Acchhsk");
+              continuationInProgress = true;
+              getContinuationContents();
+            }
           }
-        }
-      });
+        });
+      }
     }
     isSeparatedResultContentFetced.value = true;
   }
@@ -78,10 +97,18 @@ class SearchResultScreenController extends GetxController
   Future<void> getContinuationContents() async {
     final tabName = railItems[navigationRailCurrentIndex.value - 1];
 
-    final x =
-        await musicServices.getSearchContinuation(additionalParamNext[tabName]);
-    (separatedResultContent[tabName]).addAll(x[tabName]);
-    additionalParamNext[tabName] = x['params'];
+    if ((additionalParamNext[tabName] as Map?)?.isEmpty ?? true) {
+      continuationInProgress = false;
+      return;
+    }
+
+    final result = await appProviderContainer
+        .read(searchNotifierProvider.notifier)
+        .loadMoreTab(tabName);
+
+    separatedResultContent[tabName] =
+        result.categories[tabName] ?? separatedResultContent[tabName];
+    additionalParamNext[tabName] = result.continuationParams[tabName] ?? {};
     separatedResultContent.refresh();
 
     continuationInProgress = false;
@@ -96,7 +123,12 @@ class SearchResultScreenController extends GetxController
     final args = Get.arguments;
     if (args != null) {
       queryString.value = args;
-      resultContent.value = await musicServices.search(args);
+
+      final result = await appProviderContainer
+          .read(searchNotifierProvider.notifier)
+          .search(args);
+      resultContent.value = Map<String, dynamic>.from(result.categories);
+
       final allKeys = resultContent.keys.where((element) => ([
             "Songs",
             "Videos",
