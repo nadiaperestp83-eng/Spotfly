@@ -23,16 +23,24 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: Configurar Python (para Chaquopy)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependências Python (ytmusicapi)
+        run: |
+          python -m pip install --upgrade pip
+          pip install ytmusicapi yt-dlp
+
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
-          # Usando uma versão mais recente que atende ao requisito de SDK do wakelock_plus e win32
-          flutter-version: '3.24.5' 
+          flutter-version: '3.24.5'
           channel: 'stable'
           cache: true
 
       - name: Instalar dependências
-        # O --precompile ajuda a resolver conflitos de resolução
         run: flutter pub get
 
       - name: Limpar artefatos de build
