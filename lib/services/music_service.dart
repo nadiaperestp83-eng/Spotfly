@@ -49,17 +49,15 @@ class MusicServices extends getx.GetxService {
   @override
   void onInit() {
     super.onInit();
-    // Não precisamos mais de visitorId, headers manuais, etc.
     printINFO("🎵 MusicServices usando proxy em: $_proxyBaseUrl");
   }
 
   set hlCode(String code) {
-    // O proxy pode ignorar ou usar isso se quiser, mas por enquanto não faz nada
     printINFO("hlCode set to: $code (ignorado pelo proxy)");
   }
 
   // ============================================================
-  //  MÉTODO PRIVADO PARA REQUISIÇÕES (substitui _sendRequest)
+  //  MÉTODO PRIVADO PARA REQUISIÇÕES
   // ============================================================
   Future<dynamic> _get(String endpoint, {Map<String, dynamic>? queryParams}) async {
     try {
@@ -97,23 +95,15 @@ class MusicServices extends getx.GetxService {
     String? filterParams,
   }) async {
     try {
-      // O proxy atualmente não suporta filtros, mas podemos passar o limit
       final Map<String, dynamic> params = {
         'q': query,
         'limit': limit,
       };
-      // Se o proxy futuramente suportar filtros, podemos adicionar
       if (filter != null) params['filter'] = filter;
       if (filterParams != null) params['filterParams'] = filterParams;
 
       final data = await _get('/search', queryParams: params);
-
-      // O proxy retorna algo como: { "query": "...", "results": [...] }
-      // Precisamos extrair os resultados e colocá-los no formato que as telas esperam
       final results = data['results'] ?? [];
-
-      // Normaliza a saída: cria um mapa com categorias (Songs, Videos, etc.)
-      // O proxy já retorna os dados estruturados pelo ytmusicapi, que inclui 'resultType'
       return _categorizeSearchResults(results);
     } catch (e) {
       printERROR("Erro no search: $e");
@@ -122,18 +112,15 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 2. GET HOME - como o proxy não tem /home, retornamos uma lista vazia
-  //    (ou podemos usar uma busca com "top" ou similar, mas melhor retornar vazio)
+  // 2. GET HOME - não suportado
   // ------------------------------------------------------------------
   Future<dynamic> getHome({int limit = 4}) async {
     printINFO("⚠️ getHome não suportado pelo proxy. Retornando lista vazia.");
-    // Se quiser, pode chamar /search?q=top%20songs ou algo similar
-    // Mas para não quebrar, retornamos lista vazia
     return [];
   }
 
   // ------------------------------------------------------------------
-  // 3. GET CHARTS - O proxy não tem /charts, retornamos vazio
+  // 3. GET CHARTS - não suportado
   // ------------------------------------------------------------------
   Future<List<Map<String, dynamic>>> getCharts(String category,
       {String? countryCode}) async {
@@ -142,8 +129,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 4. GET WATCH PLAYLIST - usando /get_song para obter a música e extrair playlist?
-  //    Não temos um endpoint específico. Vamos retornar uma estrutura básica.
+  // 4. GET WATCH PLAYLIST - usando /get_song e /get_playlist
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getWatchPlaylist({
     String videoId = "",
@@ -155,12 +141,8 @@ class MusicServices extends getx.GetxService {
     bool onlyRelated = false,
   }) async {
     try {
-      // Se tiver videoId, usa /get_song para obter a música e montar a playlist
       if (videoId.isNotEmpty) {
         final songData = await _get('/get_song', queryParams: {'videoId': videoId});
-        // Extrai a playlist relacionada (se houver) do campo 'relatedPlaylists'? 
-        // O ytmusicapi retorna isso no get_song? Não diretamente.
-        // Vamos montar uma estrutura mínima com a música
         final track = _extractTrackFromSong(songData);
         return {
           'tracks': [track],
@@ -170,7 +152,6 @@ class MusicServices extends getx.GetxService {
           'additionalParamsForNext': null,
         };
       } else if (playlistId != null) {
-        // Se tiver playlistId, usa /get_playlist
         final playlistData = await _get('/get_playlist', queryParams: {'playlistId': playlistId});
         final tracks = playlistData['tracks'] ?? [];
         return {
@@ -201,7 +182,6 @@ class MusicServices extends getx.GetxService {
     try {
       if (playlistId != null) {
         final data = await _get('/get_playlist', queryParams: {'playlistId': playlistId});
-        // Ajusta para o formato que o app espera (similar ao antigo parse)
         return _formatPlaylistData(data);
       } else if (albumId != null) {
         final data = await _get('/get_album', queryParams: {'browseId': albumId});
@@ -215,34 +195,22 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 6. GET ARTIST - /get_artist?browseId=...
+  // 6. GET ARTIST - stub (não implementado no proxy)
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getArtist(String artistId) async {
-    try {
-      // O proxy ainda não tem /get_artist, mas podemos usar /search?q=artistId
-      // ou adicionar no proxy. Vamos retornar um stub.
-      printINFO("⚠️ getArtist não implementado no proxy. Retornando stub.");
-      return {
-        'id': artistId,
-        'name': 'Artist $artistId',
-        'thumbnails': [],
-        'description': '',
-        'subscribers': '0',
-        'radioId': '',
-      };
-    } catch (e) {
-      printERROR("Erro no getArtist: $e");
-      return {
-        'id': artistId,
-        'name': 'Unknown Artist',
-        'thumbnails': [],
-        'description': '',
-      };
-    }
+    printINFO("⚠️ getArtist não implementado no proxy. Retornando stub.");
+    return {
+      'id': artistId,
+      'name': 'Artist $artistId',
+      'thumbnails': [],
+      'description': '',
+      'subscribers': '0',
+      'radioId': '',
+    };
   }
 
   // ------------------------------------------------------------------
-  // 7. GET ARTIST RELATED CONTENT - stub
+  // 7. GET ARTIST RELATED CONTENT (nome correto)
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getArtistRelatedContent(
     String artistId,
@@ -257,14 +225,26 @@ class MusicServices extends getx.GetxService {
     };
   }
 
+  // ⚠️ MÉTODO COM O NOME EXATO QUE O CONTROLLER ESPERA (com typo)
+  // Este método chama o correto internamente para manter compatibilidade.
+  Future<Map<String, dynamic>> getArtistRealtedContent(
+    String artistId,
+    String tabName, {
+    int limit = 10,
+    Map<String, dynamic>? additionalParams,
+  }) async {
+    // Redireciona para o método com nome correto
+    return getArtistRelatedContent(artistId, tabName,
+        limit: limit, additionalParams: additionalParams);
+  }
+
   // ------------------------------------------------------------------
-  // 8. GET SEARCH CONTINUATION - stub (scroll infinito)
+  // 8. GET SEARCH CONTINUATION - stub
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getSearchContinuation(
     Map<String, dynamic> continuationParams, {
     int limit = 10,
   }) async {
-    // O proxy não suporta continuação. Retornamos vazio.
     printINFO("⚠️ getSearchContinuation não suportado pelo proxy.");
     return {};
   }
@@ -275,7 +255,6 @@ class MusicServices extends getx.GetxService {
   Future<String> getSongYear(String songId) async {
     try {
       final data = await _get('/get_song', queryParams: {'videoId': songId});
-      // Tenta extrair o ano do campo 'year' ou 'publishedDate'
       final year = data['year'] ?? data['publishedDate'] ?? '';
       if (year is String && year.isNotEmpty) {
         final match = RegExp(r'\d{4}').firstMatch(year);
@@ -293,7 +272,6 @@ class MusicServices extends getx.GetxService {
   Future<List> getSongWithId(String songId) async {
     try {
       final data = await _get('/get_song', queryParams: {'videoId': songId});
-      // Se veio dados, consideramos que é uma música válida
       if (data.isNotEmpty) {
         final track = _extractTrackFromSong(data);
         return [true, [track]];
@@ -305,7 +283,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 11. GET LYRICS - não suportado, retorna vazio
+  // 11. GET LYRICS - não suportado
   // ------------------------------------------------------------------
   dynamic getLyrics(String browseId) {
     printINFO("⚠️ getLyrics não suportado pelo proxy.");
@@ -321,7 +299,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 13. GET SEARCH SUGGESTIONS - não temos, retornamos vazio
+  // 13. GET SEARCH SUGGESTIONS - stub
   // ------------------------------------------------------------------
   Future<List<String>> getSearchSuggestion(String queryStr) async {
     printINFO("⚠️ getSearchSuggestion não suportado pelo proxy.");
@@ -329,10 +307,9 @@ class MusicServices extends getx.GetxService {
   }
 
   // ============================================================
-  //  FUNÇÕES AUXILIARES DE FORMATAÇÃO (para compatibilidade)
+  //  FUNÇÕES AUXILIARES DE FORMATAÇÃO
   // ============================================================
 
-  /// Categoriza os resultados da busca para o formato que as telas esperam
   Map<String, dynamic> _categorizeSearchResults(List<dynamic> results) {
     final Map<String, List<dynamic>> categories = {
       'Songs': [],
@@ -372,7 +349,6 @@ class MusicServices extends getx.GetxService {
           }
           break;
         default:
-          // Fallback
           if (item.containsKey('videoId') && item.containsKey('title')) {
             categories['Songs']!.add(item);
           } else if (item.containsKey('browseId') && item.containsKey('trackCount')) {
@@ -387,7 +363,6 @@ class MusicServices extends getx.GetxService {
     return categories;
   }
 
-  /// Formata dados de playlist para o formato esperado pelo app
   Map<String, dynamic> _formatPlaylistData(Map<String, dynamic> data) {
     return {
       'id': data['id'] ?? '',
@@ -403,7 +378,6 @@ class MusicServices extends getx.GetxService {
     };
   }
 
-  /// Formata dados de álbum
   Map<String, dynamic> _formatAlbumData(Map<String, dynamic> data) {
     return {
       'id': data['id'] ?? '',
@@ -419,7 +393,6 @@ class MusicServices extends getx.GetxService {
     };
   }
 
-  /// Extrai uma única faixa do retorno de /get_song
   Map<String, dynamic> _extractTrackFromSong(Map<String, dynamic> songData) {
     return {
       'videoId': songData['videoId'] ?? '',
@@ -433,7 +406,6 @@ class MusicServices extends getx.GetxService {
     };
   }
 
-  /// Calcula duração total de uma lista de faixas
   int _sumTotalDuration(List<dynamic> tracks) {
     int total = 0;
     for (var track in tracks) {
@@ -441,10 +413,7 @@ class MusicServices extends getx.GetxService {
         final dur = track['duration'];
         if (dur is int) total += dur;
         else if (dur is String) {
-          // Tenta parsear se for string
-          try {
-            total += int.parse(dur);
-          } catch (_) {}
+          try { total += int.parse(dur); } catch (_) {}
         }
       }
     }
