@@ -189,10 +189,29 @@ class HomeScreenController extends GetxController {
       await Hive.box("AppPrefs")
           .put("homeScreenDataTime", DateTime.now().millisecondsSinceEpoch);
       // ignore: unused_catch_stack
-    } on NetworkError catch (r, e) {
-      printERROR("Home Content not loaded due to ${r.message}");
+    } catch (e, st) {
+      // Antes: só capturava "on NetworkError", que é uma classe específica
+      // da MusicServices antiga. Como o Orquestrador (SearchCoordinator)
+      // pode propagar QUALQUER tipo de erro vindo de qualquer fonte
+      // (ex: StateError do PipedSource, TimeoutException, etc.) quando
+      // todas as fontes falham, esse catch precisa ser genérico — senão
+      // a exceção escapa sem ser tratada, isContentFetched nunca vira
+      // true, e a Home fica presa no shimmer pra sempre.
+      printERROR("Home Content not loaded due to: $e");
+      printERROR(st.toString());
       await Future.delayed(const Duration(seconds: 1));
       networkError.value = !silent;
+      if (!silent) {
+        // Exibe o erro real na tela (snackbar) pra permitir diagnóstico
+        // direto no celular, sem precisar de logcat/GitHub Actions.
+        Get.snackbar(
+          'Erro ao carregar a Home',
+          e.toString(),
+          duration: const Duration(seconds: 10),
+          isDismissible: true,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
     }
   }
 
