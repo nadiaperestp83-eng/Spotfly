@@ -25,7 +25,7 @@ dependencies:
   flutter_lyric: ^2.0.4+6
   flutter_slidable: ^3.1.2
   get: ^4.7.1
-  google_fonts: ^6.2.1 # Atualizado para versão compatível
+  google_fonts: ^6.2.1
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   html: ^0.15.6
@@ -67,6 +67,7 @@ dependencies:
     git:
       url: https://github.com/anandnet/youtube_explode_dart.git
       ref: 1d9ec9baa806705b1d859260eeb389ec28c6b024
+  yt_flutter_musicapi: ^3.4.4  # <-- ADICIONADO
 
 dev_dependencies:
   flutter_lints: ^4.0.0
@@ -74,7 +75,6 @@ dev_dependencies:
     sdk: flutter
   jnigen: ^0.14.0
 
-# Correção para o conflito de meta entre flutter_test e o projeto
 dependency_overrides:
   meta: 1.15.0
 
@@ -82,4 +82,3 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icons/
-    
