@@ -5,17 +5,6 @@ import '../../../core/models/search_result.dart';
 import '../../../core/models/track.dart';
 import '../data/i_music_source.dart';
 
-/// Orquestrador central. Não sabe COMO cada fonte funciona (HTTP,
-/// scraping, SDK...), só conhece a interface IMusicSource.
-///
-/// Estratégia: fallback automático e sequencial, na ordem definida em
-/// musicSourcesProvider (ver core/providers/providers.dart). Tenta a
-/// fonte 1; se der erro/timeout/vazio, tenta a fonte 2; e assim por
-/// diante. Retorna assim que a primeira fonte responder com conteúdo.
-///
-/// A UI (via SearchNotifier/HomeNotifier) recebe sempre um SearchResult
-/// ou uma List<dynamic> no MESMO formato que a MusicServices antiga já
-/// devolvia — a troca de fonte é invisível pra UI.
 class SearchCoordinator {
   final List<IMusicSource> _sources;
   final IMetadataProvider? _metadataProvider;
@@ -23,10 +12,32 @@ class SearchCoordinator {
   static const _sourceTimeout = Duration(seconds: 12);
   static const _enrichTimeout = Duration(seconds: 3);
 
+  // Mapeamento de chaves alternativas para os nomes padronizados
+  static const Map<String, String> _keyMapping = {
+    'Tracks': 'Songs',
+    'Songs': 'Songs',
+    'Videos': 'Videos',
+    'Albums': 'Albums',
+    'Artists': 'Artists',
+    'Channels': 'Artists',
+    'Featured playlists': 'Featured playlists',
+    'Community playlists': 'Community playlists',
+    'Playlists': 'Featured playlists', // fallback
+  };
+
+  // Lista de chaves que devem ser mantidas (categorias)
+  static const List<String> _relevantKeys = [
+    'Songs',
+    'Videos',
+    'Albums',
+    'Artists',
+    'Featured playlists',
+    'Community playlists',
+  ];
+
   SearchCoordinator(this._sources, {IMetadataProvider? metadataProvider})
       : _metadataProvider = metadataProvider;
 
-  /// Busca inicial (sem filtro) — substitui musicServices.search(query).
   Future<SearchResult> search(String query) {
     if (query.trim().isEmpty) {
       return Future.value(const SearchResult(sourceId: 'none'));
@@ -34,8 +45,6 @@ class SearchCoordinator {
     return _runWithFallback((source) => source.search(query));
   }
 
-  /// Busca de uma aba/categoria específica — substitui
-  /// musicServices.search(query, filter: ..., filterParams: ...).
   Future<SearchResult> searchTab(
     String query, {
     required String tabName,
@@ -50,9 +59,6 @@ class SearchCoordinator {
         ));
   }
 
-  /// Continuação (scroll infinito) de uma aba específica — substitui
-  /// musicServices.getSearchContinuation(...). Precisa do SearchResult
-  /// anterior pra saber qual fonte respondeu e quais parâmetros usar.
   Future<SearchResult> searchContinuation(
     SearchResult previous,
     String tabName, {
@@ -69,15 +75,15 @@ class SearchCoordinator {
     );
 
     try {
-      return await source.searchContinuation(params, limit: limit).timeout(_sourceTimeout);
+      final result = await source.searchContinuation(params, limit: limit).timeout(_sourceTimeout);
+      // Normaliza as chaves do resultado da continuação
+      final normalized = _normalizeSearchResult(result);
+      return normalized;
     } catch (_) {
       return SearchResult(sourceId: previous.sourceId);
     }
   }
 
-  /// Mesma estratégia de fallback sequencial, usada pela Home. Devolve
-  /// o conteúdo já no formato "cru" (List<Map<String,dynamic>>) que
-  /// HomeScreenController processa hoje.
   Future<List<dynamic>> getHome({int limit = 4}) async {
     Object? lastError;
     StackTrace? lastStack;
@@ -108,18 +114,16 @@ class SearchCoordinator {
         final result = await attempt(source).timeout(_sourceTimeout);
         if (!result.isEmpty) {
           final enrichedTracks = await _enrichBatch(result.allTracks);
+          // Normaliza as chaves do resultado antes de retornar
+          final normalizedResult = _normalizeSearchResult(result);
           return SearchResult(
-            categories: result.categories,
-            continuationParams: result.continuationParams,
+            categories: normalizedResult.categories,
+            continuationParams: normalizedResult.continuationParams,
             allTracks: enrichedTracks,
             sourceId: source.sourceId,
           );
         }
-        // Fonte respondeu mas não achou nada: tenta a próxima mesmo assim.
       } catch (e, st) {
-        // Fonte falhou (rede, timeout, parsing...). Nunca propaga aqui —
-        // isso é o que evita o loop/travamento. Só guarda pra decidir
-        // depois se TODAS falharam.
         lastError = e;
         lastStack = st;
         continue;
@@ -127,15 +131,53 @@ class SearchCoordinator {
     }
 
     if (lastError == null) {
-      // Todas as fontes responderam, nenhuma achou nada: resultado
-      // legítimo vazio, não é erro.
       return const SearchResult(sourceId: 'none');
     }
 
-    // Todas as fontes falharam de fato: propaga o último erro para o
-    // AsyncNotifier, que vai virar AsyncError na UI (nunca fica preso
-    // em loading).
     Error.throwWithStackTrace(lastError, lastStack ?? StackTrace.current);
+  }
+
+  /// Normaliza as chaves de um SearchResult para os nomes padronizados.
+  SearchResult _normalizeSearchResult(SearchResult result) {
+    if (result.categories.isEmpty) return result;
+
+    final Map<String, dynamic> normalizedMap = {};
+    final Map<String, dynamic> normalizedContinuation = {};
+
+    // Percorre as categorias originais
+    result.categories.forEach((key, value) {
+      final normalizedKey = _keyMapping[key] ?? key;
+      // Só mantém se for uma lista (ignora metadados como 'searchEndpoint')
+      if (value is List) {
+        // Se a chave normalizada já existe, mescla as listas (evitar duplicatas? simplesmente concatena)
+        if (normalizedMap.containsKey(normalizedKey) && normalizedMap[normalizedKey] is List) {
+          // Mescla sem duplicatas (opcional: usar Set para evitar duplicatas)
+          // Vamos manter simples: concatena e depois remove duplicatas? melhor não complicar.
+          // Como as fontes são únicas por chamada, raramente haverá duplicata.
+          normalizedMap[normalizedKey] = [
+            ...normalizedMap[normalizedKey] as List,
+            ...(value as List)
+          ];
+        } else {
+          normalizedMap[normalizedKey] = value;
+        }
+
+        // Também trata a continuation
+        final continuation = result.continuationParams[key];
+        if (continuation != null) {
+          normalizedContinuation[normalizedKey] = continuation;
+        }
+      }
+    });
+
+    // Filtra para manter apenas as chaves relevantes (opcional, mas garante que não inclua outras)
+    // Se quiser manter todas as listas, remova o filtro. Vou manter todas para não perder dados.
+    return SearchResult(
+      categories: normalizedMap,
+      continuationParams: normalizedContinuation,
+      allTracks: result.allTracks,
+      sourceId: result.sourceId,
+    );
   }
 
   Future<List<Track>> _enrichBatch(List<Track> tracks) async {
@@ -146,7 +188,7 @@ class SearchCoordinator {
       try {
         return await provider.enrich(track).timeout(_enrichTimeout);
       } catch (_) {
-        return track; // mantém a versão "crua" — enriquecimento é best-effort
+        return track;
       }
     }));
   }
