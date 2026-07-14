@@ -57,8 +57,7 @@ class SearchResultScreenController extends GetxController
 
     if (value > 0) {
       final tabName = railItems[value - 1];
-      
-      // Carrega apenas se ainda não estiver preenchido
+      // Carrega se não existir ou se estiver vazia
       if (!separatedResultContent.containsKey(tabName) || separatedResultContent[tabName].isEmpty) {
         final itemCount = (tabName == 'Songs' || tabName == 'Videos') ? 25 : 10;
         final filterParams = (resultContent['searchEndpoint'] as Map?)?[tabName] as String?;
@@ -74,6 +73,19 @@ class SearchResultScreenController extends GetxController
             separatedResultContent[tabName] = result.categories[tabName] ?? [];
             additionalParamNext[tabName] = result.continuationParams[tabName] ?? {};
           }
+          
+          // Adiciona listener para scroll se houver paginação
+          if ((additionalParamNext[tabName] as Map).isNotEmpty) {
+            final scrollController = scrollControllers[tabName];
+            scrollController?.addListener(() {
+              if (scrollController.position.pixels >= scrollController.position.maxScrollExtent / 2) {
+                if (!continuationInProgress) {
+                  continuationInProgress = true;
+                  getContinuationContents();
+                }
+              }
+            });
+          }
         } catch (e) {
           printERROR("Erro na aba '$tabName': $e");
         }
@@ -82,20 +94,39 @@ class SearchResultScreenController extends GetxController
     isSeparatedResultContentFetced.value = true;
   }
 
+  Future<void> getContinuationContents() async {
+    final tabName = railItems[navigationRailCurrentIndex.value - 1];
+    if ((additionalParamNext[tabName] as Map?)?.isEmpty ?? true) {
+      continuationInProgress = false;
+      return;
+    }
+    try {
+      final result = await appProviderContainer.read(searchNotifierProvider.notifier).loadMoreTab(tabName);
+      separatedResultContent[tabName] = result.categories[tabName] ?? separatedResultContent[tabName];
+      additionalParamNext[tabName] = result.continuationParams[tabName] ?? {};
+      separatedResultContent.refresh();
+    } catch (e) {
+      printERROR("Erro ao carregar mais itens: $e");
+    } finally {
+      continuationInProgress = false;
+    }
+  }
+
+  void viewAllCallback(String text) {
+    if (railItems.contains(text)) {
+      onDestinationSelected(railItems.indexOf(text) + 1);
+    }
+  }
+
   Future<void> _getInitSearchResult() async {
     isResultContentFetced.value = false;
     final args = Get.arguments;
     if (args == null) return;
-
     queryString.value = args;
 
-    final result = await appProviderContainer
-        .read(searchNotifierProvider.notifier)
-        .search(args);
+    final result = await appProviderContainer.read(searchNotifierProvider.notifier).search(args);
 
-    printINFO("🔍 Chaves recebidas: ${result.categories.keys}");
-
-    // 1. Normalização robusta: garante que todas as categorias conhecidas apareçam no menu
+    // Normalização sem descartar chaves vazias
     Map<String, dynamic> normalizedMap = {};
     result.categories.forEach((key, value) {
       final normalizedKey = keyMapping[key] ?? key;
@@ -106,28 +137,22 @@ class SearchResultScreenController extends GetxController
       }
     });
 
-    // 2. Definimos as abas que queremos sempre disponíveis
-    final List<String> targetKeys = [
-      "Songs", "Videos", "Albums", "Artists", 
-      "Featured playlists", "Community playlists"
-    ];
-
-    // 3. Adiciona ao railItems se a categoria existir na resposta ou for uma categoria padrão
-    // Removemos a verificação .isNotEmpty para garantir que a aba sempre apareça
+    // Lista de categorias esperadas
+    final List<String> targetKeys = ["Songs", "Videos", "Albums", "Artists", "Featured playlists", "Community playlists"];
+    
+    // Adiciona as chaves que existem no resultado
     railItems.value = targetKeys.where((key) => normalizedMap.containsKey(key)).toList();
 
+    // Se nenhuma das chaves esperadas foi encontrada, adiciona o que vier de listas
     if (railItems.isEmpty) {
       railItems.value = normalizedMap.keys.where((key) => normalizedMap[key] is List).toList();
     }
 
     resultContent.value = normalizedMap;
 
-    // Inicializa ScrollControllers e lista de conteúdo para evitar erros de renderização
     for (String item in railItems) {
       scrollControllers[item] = ScrollController();
-      if (!separatedResultContent.containsKey(item)) {
-        separatedResultContent[item] = normalizedMap[item] ?? [];
-      }
+      separatedResultContent[item] = normalizedMap[item] ?? [];
     }
 
     if (GetPlatform.isDesktop || Get.find<SettingsScreenController>().isBottomNavBarEnabled.isTrue) {
@@ -137,7 +162,25 @@ class SearchResultScreenController extends GetxController
     isResultContentFetced.value = true;
   }
 
-  // ... (manter os métodos getContinuationContents, onSort, onClose originais)
-  
-  // (Nota: Certifique-se de manter o restante dos métodos que você já tinha após o _getInitSearchResult)
+  void onSort(SortType sortType, bool isAscending, String title) {
+    if (!separatedResultContent.containsKey(title)) return;
+    final list = separatedResultContent[title].toList();
+    
+    final lowerTitle = title.toLowerCase();
+    if (lowerTitle.contains("song") || lowerTitle.contains("track")) sortSongsNVideos(list, sortType, isAscending);
+    else if (lowerTitle.contains("playlist")) sortPlayLists(list, sortType, isAscending);
+    else if (lowerTitle.contains("artist") || lowerTitle.contains("channel")) sortArtist(list, sortType, isAscending);
+    else if (lowerTitle.contains("album")) sortAlbumNSingles(list, sortType, isAscending);
+    
+    separatedResultContent[title] = list;
+    separatedResultContent.refresh();
+  }
+
+  @override
+  void onClose() {
+    for (var controller in scrollControllers.values) controller.dispose();
+    Get.find<HomeScreenController>().whenHomeScreenOnTop();
+    tabController?.dispose();
+    super.onClose();
+  }
 }
