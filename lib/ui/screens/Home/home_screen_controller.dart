@@ -112,7 +112,13 @@ class HomeScreenController extends GetxController {
               List<MediaItem>.from(homeContentListMap[index]["contents"]),
               title: "Trending");
         } else if (index == -1) {
-          List charts = await _musicServices.getCharts(contentType);
+          // Antes: _musicServices.getCharts(contentType) direto.
+          // Agora: passa pelo Orquestrador (API interna do YT -> fallback
+          // pro que estiver em Hive.box("homeScreenData")). Formato de
+          // retorno idêntico ao de sempre.
+          List charts = await appProviderContainer
+              .read(homeNotifierProvider.notifier)
+              .getCharts();
           final index = charts.indexWhere((element) =>
               element['title'] ==
               (contentType == "TMV" ? "Top Music Videos" : "Trending"));
@@ -131,7 +137,13 @@ class HomeScreenController extends GetxController {
           quickPicks.value = QuickPicks(List<MediaItem>.from(con["contents"]),
               title: con["title"]);
         } else if (index == -1) {
-          List charts = await _musicServices.getCharts(contentType);
+          // Antes: _musicServices.getCharts(contentType) direto.
+          // Agora: passa pelo Orquestrador (API interna do YT -> fallback
+          // pro que estiver em Hive.box("homeScreenData")). Formato de
+          // retorno idêntico ao de sempre.
+          List charts = await appProviderContainer
+              .read(homeNotifierProvider.notifier)
+              .getCharts();
           final index = charts.indexWhere((element) =>
               element['title'] ==
               (contentType == "TMV" ? "Top Music Videos" : "Trending"));
@@ -218,7 +230,11 @@ class HomeScreenController extends GetxController {
           title: homeContentListMap[0]["title"]);
     } else if (val == "TMV" || val == 'TR') {
       try {
-        final charts = await _musicServices.getCharts(val);
+        // Antes: _musicServices.getCharts(val) direto.
+        // Agora: passa pelo Orquestrador (API interna do YT -> fallback
+        // pro que estiver em Hive.box("homeScreenData")).
+        final charts =
+            await appProviderContainer.read(homeNotifierProvider.notifier).getCharts();
         final index = charts.indexWhere((element) =>
             element['title'] ==
             (val == "TMV" ? "Top Music Videos" : "Trending"));
