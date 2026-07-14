@@ -273,7 +273,7 @@ class MusicServices extends getx.GetxService {
       return {
         'id': _safe(() => artist.artistId) ?? artistId,
         'name': _safe(() => artist.name) ?? '',
-        'thumbnails': _safe(() => artist.thumbnails)?.map((t) => {'url': t.url}).toList() ?? [],
+        'thumbnails': _safe<dynamic>(() => artist.thumbnails)?.map((t) => {'url': t.url}).toList() ?? [],
         'description': _safe(() => artist.description) ?? '',
         'subscribers': _safe(() => artist.subscribers)?.toString() ?? '0',
         'radioId': '',
