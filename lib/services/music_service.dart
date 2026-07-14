@@ -1,11 +1,11 @@
 // ignore_for_file: constant_identifier_names
 
+import 'dart:convert';
 import 'package:audio_service/audio_service.dart';
-import 'package:dio/dio.dart';
 import 'package:get/get.dart' as getx;
 import 'package:hive/hive.dart';
+import 'package:http/http.dart' as http; // Usando http em vez de Dio para evitar problemas de SSL/Timeout
 
-import '/models/album.dart';
 import '../utils/helper.dart';
 
 // ============================================================
@@ -25,26 +25,13 @@ enum AudioQuality {
 
 class MusicServices extends getx.GetxService {
   // ============================================================
-  //  CONFIGURAÇÃO DO PROXY
+  //  CONFIGURAÇÃO DO PROXY - URL CORRIGIDA
   // ============================================================
-  // ⚠️ ALTERE ESTA URL PARA A DO SEU SERVIDOR PROXY
   static const String _proxyBaseUrl =
-      'https://meu-api-proxy-music-production.up.railway.app';
-
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: _proxyBaseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-    ),
-  );
+      'https://yt-proxy-music-production.up.railway.app';
 
   // ============================================================
-  //  MÉTODOS DE INICIALIZAÇÃO (simplificados)
+  //  INICIALIZAÇÃO
   // ============================================================
   @override
   void onInit() {
@@ -57,30 +44,37 @@ class MusicServices extends getx.GetxService {
   }
 
   // ============================================================
-  //  MÉTODO PRIVADO PARA REQUISIÇÕES
+  //  MÉTODO PRIVADO PARA REQUISIÇÕES (usando http)
   // ============================================================
   Future<dynamic> _get(String endpoint, {Map<String, dynamic>? queryParams}) async {
     try {
-      final response = await _dio.get(
-        endpoint,
-        queryParameters: queryParams,
+      final uri = Uri.parse('$_proxyBaseUrl$endpoint')
+          .replace(queryParameters: queryParams?.map((k, v) => MapEntry(k, v.toString())));
+      
+      printINFO("📡 GET $uri");
+      
+      final response = await http.get(uri).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw NetworkError("Timeout ao conectar ao proxy"),
       );
+      
+      printINFO("✅ Status: ${response.statusCode}");
+      
       if (response.statusCode == 200) {
-        return response.data;
+        final data = jsonDecode(response.body);
+        printINFO("📦 Dados recebidos: ${data.keys}");
+        return data;
       } else {
-        throw NetworkError("Erro ${response.statusCode}: ${response.statusMessage}");
+        throw NetworkError("Erro ${response.statusCode}: ${response.body}");
       }
-    } on DioException catch (e) {
-      printERROR("Erro na requisição para $endpoint: $e");
-      throw NetworkError("Falha na comunicação com o proxy: ${e.message}");
     } catch (e) {
-      printERROR("Erro inesperado: $e");
-      throw NetworkError("Erro inesperado: $e");
+      printERROR("❌ Erro na requisição para $endpoint: $e");
+      throw NetworkError("Falha na comunicação com o proxy: $e");
     }
   }
 
   // ============================================================
-  //  MÉTODOS PÚBLICOS REFATORADOS
+  //  MÉTODOS PÚBLICOS
   // ============================================================
 
   // ------------------------------------------------------------------
@@ -95,6 +89,8 @@ class MusicServices extends getx.GetxService {
     String? filterParams,
   }) async {
     try {
+      printINFO("🔍 Buscando por: '$query' (limit: $limit)");
+
       final Map<String, dynamic> params = {
         'q': query,
         'limit': limit,
@@ -103,16 +99,31 @@ class MusicServices extends getx.GetxService {
       if (filterParams != null) params['filterParams'] = filterParams;
 
       final data = await _get('/search', queryParams: params);
-      final results = data['results'] ?? [];
-      return _categorizeSearchResults(results);
+      
+      if (data == null || !data.containsKey('results')) {
+        printERROR("❌ Resposta do proxy não contém 'results'");
+        return {};
+      }
+
+      final results = data['results'] as List? ?? [];
+      printINFO("📊 Proxy retornou ${results.length} resultados");
+
+      if (results.isEmpty) {
+        printINFO("⚠️ Nenhum resultado encontrado para '$query'");
+        return {};
+      }
+
+      final categorized = _categorizeSearchResults(results);
+      printINFO("📋 Categorias encontradas: ${categorized.keys}");
+      return categorized;
     } catch (e) {
-      printERROR("Erro no search: $e");
+      printERROR("❌ Erro no search: $e");
       return {};
     }
   }
 
   // ------------------------------------------------------------------
-  // 2. GET HOME - não suportado
+  // 2. GET HOME - não suportado (retorna vazio)
   // ------------------------------------------------------------------
   Future<dynamic> getHome({int limit = 4}) async {
     printINFO("⚠️ getHome não suportado pelo proxy. Retornando lista vazia.");
@@ -142,6 +153,7 @@ class MusicServices extends getx.GetxService {
   }) async {
     try {
       if (videoId.isNotEmpty) {
+        printINFO("🎵 Obtendo música: $videoId");
         final songData = await _get('/get_song', queryParams: {'videoId': videoId});
         final track = _extractTrackFromSong(songData);
         return {
@@ -152,6 +164,7 @@ class MusicServices extends getx.GetxService {
           'additionalParamsForNext': null,
         };
       } else if (playlistId != null) {
+        printINFO("📋 Obtendo playlist: $playlistId");
         final playlistData = await _get('/get_playlist', queryParams: {'playlistId': playlistId});
         final tracks = playlistData['tracks'] ?? [];
         return {
@@ -181,9 +194,11 @@ class MusicServices extends getx.GetxService {
   }) async {
     try {
       if (playlistId != null) {
+        printINFO("📋 Obtendo playlist: $playlistId");
         final data = await _get('/get_playlist', queryParams: {'playlistId': playlistId});
         return _formatPlaylistData(data);
       } else if (albumId != null) {
+        printINFO("📀 Obtendo álbum: $albumId");
         final data = await _get('/get_album', queryParams: {'browseId': albumId});
         return _formatAlbumData(data);
       }
@@ -226,14 +241,12 @@ class MusicServices extends getx.GetxService {
   }
 
   // ⚠️ MÉTODO COM O NOME EXATO QUE O CONTROLLER ESPERA (com typo)
-  // Este método chama o correto internamente para manter compatibilidade.
   Future<Map<String, dynamic>> getArtistRealtedContent(
     String artistId,
     String tabName, {
     int limit = 10,
     Map<String, dynamic>? additionalParams,
   }) async {
-    // Redireciona para o método com nome correto
     return getArtistRelatedContent(artistId, tabName,
         limit: limit, additionalParams: additionalParams);
   }
@@ -267,7 +280,7 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 10. GET SONG WITH ID (para deep links) - via /get_song
+  // 10. GET SONG WITH ID (para deep links)
   // ------------------------------------------------------------------
   Future<List> getSongWithId(String songId) async {
     try {
