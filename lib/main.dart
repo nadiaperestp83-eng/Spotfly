@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:terminate_restart/terminate_restart.dart';
 
+import '/core/riverpod/app_provider_container.dart';
 import '/ui/screens/Search/search_screen_controller.dart';
 import '/utils/get_localization.dart';
 import '/services/downloader.dart';
@@ -32,10 +33,13 @@ Future<void> main() async {
   WidgetsBinding.instance.addObserver(LifecycleHandler());
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   TerminateRestart.instance.initialize();
-  // ProviderScope só disponibiliza os providers Riverpod (search, home,
-  // player) para quem quiser lê-los futuramente. Não altera nenhuma
-  // tela: GetMaterialApp/Home continuam exatamente como estavam.
-  runApp(const ProviderScope(child: MyApp()));
+  // UncontrolledProviderScope usa o mesmo appProviderContainer que os
+  // GetxControllers acessam diretamente (ver core/riverpod/app_provider_container.dart),
+  // garantindo que Riverpod e GetX enxerguem o mesmo estado.
+  runApp(UncontrolledProviderScope(
+    container: appProviderContainer,
+    child: const MyApp(),
+  ));
 }
 
 class MyApp extends StatelessWidget {
