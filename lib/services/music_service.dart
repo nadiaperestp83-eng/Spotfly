@@ -36,6 +36,16 @@ class MusicServices extends getx.GetxService {
     return _initFuture!;
   }
 
+  /// Executa um getter que pode não existir na versão atual do pacote
+  /// dart_ytmusic_api sem derrubar o bloco try/catch inteiro que o chama.
+  T? _safe<T>(T? Function() getter) {
+    try {
+      return getter();
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ============================================================
   //  INICIALIZAÇÃO
   // ============================================================
@@ -112,7 +122,7 @@ class MusicServices extends getx.GetxService {
       final List<Map<String, dynamic>> result = [];
       for (var section in sections) {
         try {
-          final items = _sectionItemsToMaps(section.items);
+          final items = _sectionItemsToMaps(section.contents);
           if (items.isNotEmpty) {
             result.add({
               'title': section.title ?? '',
@@ -173,7 +183,7 @@ class MusicServices extends getx.GetxService {
         // Como não há getSong, usamos search ou getPlaylistVideos? 
         // Vamos usar search com o videoId como fallback, mas o ideal seria ter getSong.
         // Na versão 1.3.7, não há getSong diretamente, então usamos search com o videoId.
-        final results = await _ytApi.search(videoId);
+        final dynamic results = await _ytApi.search(videoId);
         final song = results.firstWhere(
           (item) => item.videoId == videoId,
           orElse: () => results.isNotEmpty ? results.first : null,
@@ -202,7 +212,7 @@ class MusicServices extends getx.GetxService {
         }
       } else if (playlistId != null) {
         printINFO("📋 Obtendo playlist: $playlistId");
-        final playlist = await _ytApi.getPlaylist(playlistId);
+        final dynamic playlist = await _ytApi.getPlaylist(playlistId);
         final tracks = playlist.songs.map((s) => _songToTrack(s)).toList();
         return {
           'tracks': tracks,
@@ -254,18 +264,18 @@ class MusicServices extends getx.GetxService {
     try {
       printINFO("🎤 Obtendo artista: $artistId");
       await _ensureInitialized();
-      final artist = await _ytApi.getArtist(artistId);
+      final dynamic artist = await _ytApi.getArtist(artistId);
       // Também buscamos músicas, álbuns e singles para enriquecer
       final songs = await _ytApi.getArtistSongs(artistId);
       final albums = await _ytApi.getArtistAlbums(artistId);
       final singles = await _ytApi.getArtistSingles(artistId);
 
       return {
-        'id': artist.id ?? artistId,
-        'name': artist.name ?? '',
-        'thumbnails': artist.thumbnails?.map((t) => {'url': t.url}).toList() ?? [],
-        'description': artist.description ?? '',
-        'subscribers': artist.subscribers?.toString() ?? '0',
+        'id': _safe(() => artist.artistId) ?? artistId,
+        'name': _safe(() => artist.name) ?? '',
+        'thumbnails': _safe(() => artist.thumbnails)?.map((t) => {'url': t.url}).toList() ?? [],
+        'description': _safe(() => artist.description) ?? '',
+        'subscribers': _safe(() => artist.subscribers)?.toString() ?? '0',
         'radioId': '',
         'songs': songs.map((s) => _songToMap(s)).toList(),
         'albums': albums.map((a) => _albumToMap(a)).toList(),
@@ -350,7 +360,7 @@ class MusicServices extends getx.GetxService {
   Future<String> getSongYear(String songId) async {
     try {
       await _ensureInitialized();
-      final results = await _ytApi.search(songId);
+      final dynamic results = await _ytApi.search(songId);
       final song = results.firstWhere(
         (item) => item.videoId == songId,
         orElse: () => results.isNotEmpty ? results.first : null,
@@ -368,7 +378,7 @@ class MusicServices extends getx.GetxService {
   Future<List> getSongWithId(String songId) async {
     try {
       await _ensureInitialized();
-      final results = await _ytApi.search(songId);
+      final dynamic results = await _ytApi.search(songId);
       final song = results.firstWhere(
         (item) => item.videoId == songId,
         orElse: () => results.isNotEmpty ? results.first : null,
@@ -385,7 +395,7 @@ class MusicServices extends getx.GetxService {
   // 11. GET LYRICS - usa getLyrics(videoId) (versão 1.3.7)
   // ------------------------------------------------------------------
   dynamic getLyrics(String browseId) {
-    // Como getLyrics retorna Future<Lyrics?>, precisamos de async
+    // Como getLyrics retorna Future<String?>, precisamos de async
     return _getLyricsAsync(browseId);
   }
 
@@ -393,11 +403,8 @@ class MusicServices extends getx.GetxService {
     try {
       printINFO("📝 Obtendo letras para: $videoId");
       await _ensureInitialized();
-      final lyrics = await _ytApi.getLyrics(videoId);
-      if (lyrics != null) {
-        return lyrics.lines.map((line) => line.text).join('\n');
-      }
-      return '';
+      final dynamic lyrics = await _ytApi.getLyrics(videoId);
+      return lyrics ?? '';
     } catch (e) {
       printERROR("Erro ao obter letras: $e");
       return '';
