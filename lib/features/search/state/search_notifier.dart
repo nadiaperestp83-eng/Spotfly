@@ -46,7 +46,18 @@ class SearchNotifier extends AsyncNotifier<SearchResult> {
     }
 
     state = result;
-    return result.valueOrNull ?? const SearchResult(sourceId: 'none');
+
+    // DIAGNÓSTICO: antes, se todas as fontes falhassem, esse erro era
+    // descartado aqui e a tela de busca só mostrava "categorias: nenhuma"
+    // sem dizer o motivo. Agora o erro real é repassado pra cima —
+    // SearchResultScreenController._getInitSearchResult() captura isso
+    // num try/catch e mostra a mensagem real no diálogo de debug.
+    if (result.hasError) {
+      Error.throwWithStackTrace(
+          result.error!, result.stackTrace ?? StackTrace.current);
+    }
+
+    return result.value;
   }
 
   /// Busca de uma aba (Songs/Videos/Albums/...) — substitui a chamada de
