@@ -23,7 +23,6 @@ class SearchResultScreenController extends GetxController
   bool continuationInProgress = false;
   TabController? tabController;
   bool isTabTransitionReversed = false;
-  //ScrollContollers List
   final Map<String, ScrollController> scrollControllers = {};
 
   @override
@@ -35,12 +34,9 @@ class SearchResultScreenController extends GetxController
 
   Future<void> onDestinationSelected(int value,
       {bool ignoreTabCommand = false}) async {
-    if (railItems.isEmpty) {
-      return;
-    }
+    if (railItems.isEmpty) return;
 
     isTabTransitionReversed = value > navigationRailCurrentIndex.value;
-
     isSeparatedResultContentFetced.value = false;
     navigationRailCurrentIndex.value = value;
 
@@ -48,23 +44,17 @@ class SearchResultScreenController extends GetxController
       tabController?.animateTo(value);
     }
 
-    // O índice 0 é a visualização "Todos" (All) - ignoramos porque não tem aba específica
-    if (value > 0 && value - 1 < railItems.length) {
+    if (value > 0 &&
+        (!separatedResultContent.containsKey(railItems[value - 1]) ||
+            separatedResultContent[railItems[value - 1]].isEmpty)) {
       final tabName = railItems[value - 1];
-      
-      // Se já temos dados para essa aba, não recarregamos
-      if (separatedResultContent.containsKey(tabName) &&
-          separatedResultContent[tabName].isNotEmpty) {
-        isSeparatedResultContentFetced.value = true;
-        return;
-      }
-
-      final itemCount = (tabName == 'Songs' || tabName == 'Videos' || tabName == 'Tracks') ? 25 : 10;
-      final filterParams = (resultContent['searchEndpoint'] as Map?)?[tabName] as String?;
+      final itemCount = (tabName == 'Songs' || tabName == 'Videos') ? 25 : 10;
+      final filterParams =
+          (resultContent['searchEndpoint'] as Map?)?[tabName] as String?;
 
       try {
         if (filterParams == null) {
-          // Fallback: se não houver filtro específico, usa o que já veio na busca inicial
+          // Fallback: usa os dados já carregados na busca inicial
           separatedResultContent[tabName] =
               List.from(resultContent[tabName] ?? []);
           additionalParamNext[tabName] = {};
@@ -84,20 +74,18 @@ class SearchResultScreenController extends GetxController
             (additionalParamNext[tabName] as Map).isNotEmpty;
         if (hasContinuation) {
           final scrollController = scrollControllers[tabName];
-          if (scrollController != null) {
-            scrollController.addListener(() {
-              double maxScroll = scrollController.position.maxScrollExtent;
-              double currentScroll = scrollController.position.pixels;
-              if (currentScroll >= maxScroll / 2 &&
-                  additionalParamNext[tabName]['additionalParams'] !=
-                      '&ctoken=null&continuation=null') {
-                if (!continuationInProgress) {
-                  continuationInProgress = true;
-                  getContinuationContents();
-                }
+          scrollController!.addListener(() {
+            double maxScroll = scrollController.position.maxScrollExtent;
+            double currentScroll = scrollController.position.pixels;
+            if (currentScroll >= maxScroll / 2 &&
+                additionalParamNext[tabName]['additionalParams'] !=
+                    '&ctoken=null&continuation=null') {
+              if (!continuationInProgress) {
+                continuationInProgress = true;
+                getContinuationContents();
               }
-            });
-          }
+            }
+          });
         }
       } catch (e, st) {
         printERROR("Busca da aba '$tabName' falhou: $e");
@@ -117,8 +105,6 @@ class SearchResultScreenController extends GetxController
   }
 
   Future<void> getContinuationContents() async {
-    if (navigationRailCurrentIndex.value <= 0) return;
-    
     final tabName = railItems[navigationRailCurrentIndex.value - 1];
 
     if ((additionalParamNext[tabName] as Map?)?.isEmpty ?? true) {
@@ -152,10 +138,7 @@ class SearchResultScreenController extends GetxController
   }
 
   void viewAllCallback(String text) {
-    final index = railItems.indexOf(text);
-    if (index != -1) {
-      onDestinationSelected(index + 1);
-    }
+    onDestinationSelected(railItems.indexOf(text) + 1);
   }
 
   Future<void> _getInitSearchResult() async {
@@ -169,7 +152,10 @@ class SearchResultScreenController extends GetxController
         .read(searchNotifierProvider.notifier)
         .search(args);
 
-    // Diagnóstico: verifica se houve erro (AsyncValue)
+    // Log para diagnóstico
+    printINFO("Chaves recebidas: ${result.categories.keys}");
+    printINFO("Conteúdo: ${result.categories}");
+
     final asyncState = appProviderContainer.read(searchNotifierProvider);
     if (asyncState.hasError) {
       printERROR("Busca inicial falhou: ${asyncState.error}");
@@ -182,73 +168,55 @@ class SearchResultScreenController extends GetxController
       );
     }
 
-    // 🔥 CORREÇÃO: Aceita dinamicamente todas as chaves não vazias
-    final allKeys = <String>[];
-    for (var key in result.categories.keys) {
-      final content = result.categories[key];
-      if (content is List && content.isNotEmpty) {
-        allKeys.add(key);
-      }
-    }
+    // 🔥 CORREÇÃO: filtra apenas chaves cujo valor é uma List não vazia
+    // Isso exclui "searchEndpoint" e outros metadados que sejam Map
+    final allKeys = result.categories.keys
+        .where((key) => result.categories[key] is List &&
+            (result.categories[key] as List).isNotEmpty)
+        .toList();
 
-    // Se não encontrou nenhuma chave com conteúdo, tenta um fallback com nomes comuns
+    // Fallback: se nenhuma lista foi encontrada, tenta nomes comuns
     if (allKeys.isEmpty) {
       final fallbackKeys = [
         "Songs",
-        "Tracks",
         "Videos",
         "Albums",
         "Featured playlists",
         "Community playlists",
-        "Playlists",
-        "Artists",
-        "Channels"
+        "Artists"
       ];
       for (var key in fallbackKeys) {
         if (result.categories.containsKey(key) &&
-            (result.categories[key] as List?)?.isNotEmpty == true) {
+            result.categories[key] is List &&
+            (result.categories[key] as List).isNotEmpty) {
           allKeys.add(key);
         }
       }
     }
 
-    // Se ainda assim não houver nada, pelo menos exibe as chaves que existem (mesmo vazias)
-    if (allKeys.isEmpty) {
-      // Pega todas as chaves disponíveis, mesmo que vazias, para não ficar tela em branco
-      allKeys.addAll(result.categories.keys);
-    }
-
     railItems.value = allKeys;
 
-    // Atualiza o resultContent com todas as categorias
+    // Armazena todo o resultado (incluindo metadados)
     resultContent.value = Map<String, dynamic>.from(result.categories);
 
     // Cálculo da altura do rail (opcional)
-    final len = railItems.where((element) => element.toLowerCase().contains("playlist")).length;
+    final len = railItems.where((element) => element.contains("playlists")).length;
     final calH = 30 + (railItems.length + 1 - len) * 123 + len * 150.0;
-    railitemHeight.value = calH >= railitemHeight.value ? calH : railitemHeight.value;
+    railitemHeight.value =
+        calH >= railitemHeight.value ? calH : railitemHeight.value;
 
     // Cria ScrollControllers para cada item
     for (String item in railItems) {
-      if (!scrollControllers.containsKey(item)) {
-        scrollControllers[item] = ScrollController();
-      }
+      scrollControllers[item] = ScrollController();
     }
 
     // Configuração para bottom nav / desktop
     if (GetPlatform.isDesktop ||
         Get.find<SettingsScreenController>().isBottomNavBarEnabled.isTrue) {
       for (var element in railItems) {
-        if (!separatedResultContent.containsKey(element)) {
-          separatedResultContent[element] = [];
-        }
+        separatedResultContent[element] = [];
       }
-      if (tabController == null) {
-        tabController = TabController(length: railItems.length + 1, vsync: this);
-      } else {
-        tabController?.dispose();
-        tabController = TabController(length: railItems.length + 1, vsync: this);
-      }
+      tabController = TabController(length: railItems.length + 1, vsync: this);
       tabController?.animation?.addListener(() {
         int indexChange = tabController!.offset.round();
         int index = tabController!.index + indexChange;
@@ -262,41 +230,33 @@ class SearchResultScreenController extends GetxController
   }
 
   void onSort(SortType sortType, bool isAscending, String title) {
-    // 🔥 Normaliza o título para comparação
     final lowerTitle = title.toLowerCase();
-    final contentList = separatedResultContent[title];
-    if (contentList == null || contentList.isEmpty) return;
-
     if (lowerTitle.contains("song") || lowerTitle.contains("track")) {
-      final list = List.from(contentList);
-      sortSongsNVideos(list, sortType, isAscending);
-      separatedResultContent[title] = list;
+      final songList = separatedResultContent[title].toList();
+      sortSongsNVideos(songList, sortType, isAscending);
+      separatedResultContent[title] = songList;
     } else if (lowerTitle.contains("playlist")) {
-      final list = List.from(contentList);
-      sortPlayLists(list, sortType, isAscending);
-      separatedResultContent[title] = list;
+      final playlists = separatedResultContent[title].toList();
+      sortPlayLists(playlists, sortType, isAscending);
+      separatedResultContent[title] = playlists;
     } else if (lowerTitle.contains("artist") || lowerTitle.contains("channel")) {
-      final list = List.from(contentList);
-      sortArtist(list, sortType, isAscending);
-      separatedResultContent[title] = list;
+      final artistList = separatedResultContent[title].toList();
+      sortArtist(artistList, sortType, isAscending);
+      separatedResultContent[title] = artistList;
     } else if (lowerTitle.contains("album")) {
-      final list = List.from(contentList);
-      sortAlbumNSingles(list, sortType, isAscending);
-      separatedResultContent[title] = list;
-    } else if (lowerTitle.contains("video")) {
-      final list = List.from(contentList);
-      sortSongsNVideos(list, sortType, isAscending);
-      separatedResultContent[title] = list;
+      final albumList = separatedResultContent[title].toList();
+      sortAlbumNSingles(albumList, sortType, isAscending);
+      separatedResultContent[title] = albumList;
     }
   }
 
   @override
   void onClose() {
     for (String item in railItems) {
-      scrollControllers[item]?.dispose();
+      (scrollControllers[item])!.dispose();
     }
-    tabController?.dispose();
     Get.find<HomeScreenController>().whenHomeScreenOnTop();
+    tabController?.dispose();
     super.onClose();
   }
 }
