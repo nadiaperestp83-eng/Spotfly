@@ -8,14 +8,17 @@ class StreamProvider {
   final bool playable;
   final List<Audio>? audioFormats;
   final String statusMSG;
-  StreamProvider(
-      {required this.playable, this.audioFormats, this.statusMSG = ""});
+  
+  StreamProvider({
+    required this.playable, 
+    this.audioFormats, 
+    this.statusMSG = ""
+  });
 
   static Future<StreamProvider> fetch(String videoId) async {
     final yt = YtClientProvider.create();
     
     try {
-      // Adicionado timeout de 10 segundos para evitar carregamento infinito
       final res = await yt.videos.streamsClient.getManifest(videoId)
           .timeout(const Duration(seconds: 10));
       
@@ -30,7 +33,8 @@ class StreamProvider {
           statusMSG: "OK",
           audioFormats: audio
               .map((e) => Audio(
-                  itag: e.tag.value, // Corrigido para acessar o valor do Tag
+                  itag: e.tag.value,
+                  // Correção: comparando o tipo de codec do objeto AudioCodec
                   audioCodec: e.audioCodec.name.contains('mp4a') ? Codec.mp4a : Codec.opus,
                   bitrate: e.bitrate.bitsPerSecond,
                   duration: 0,
@@ -57,11 +61,22 @@ class StreamProvider {
     }
   }
 
+  // Getters restaurados e completos para garantir que o downloader funcione
   Audio? get highestQualityAudio =>
-      audioFormats?.lastWhere((item) => item.itag == 251 || item.itag == 140,
+      audioFormats?.firstWhere((item) => item.itag == 251 || item.itag == 140,
           orElse: () => audioFormats!.first);
 
-  // ... (manter os outros getters iguais)
+  Audio? get highestBitrateMp4aAudio =>
+      audioFormats?.firstWhere((item) => item.itag == 140 || item.itag == 139,
+          orElse: () => audioFormats!.first);
+
+  Audio? get highestBitrateOpusAudio =>
+      audioFormats?.firstWhere((item) => item.itag == 251 || item.itag == 250,
+          orElse: () => audioFormats!.first);
+
+  Audio? get lowQualityAudio =>
+      audioFormats?.firstWhere((item) => item.itag == 249 || item.itag == 139,
+          orElse: () => audioFormats!.first);
 
   Map<String, dynamic> get hmStreamingData {
     return {
@@ -72,5 +87,3 @@ class StreamProvider {
     };
   }
 }
-
-// Classe Audio e Enum mantidos conforme seu original...
