@@ -1,11 +1,15 @@
 // ignore_for_file: constant_identifier_names
 
+import 'dart:async';
+import 'dart:io';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:get/get.dart' as getx;
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yte;
 
 import '../models/media_Item_builder.dart';
 import '../utils/helper.dart';
+import 'proxy_config.dart';
 import 'yt_client_provider.dart';
 
 // ============================================================
@@ -28,6 +32,12 @@ enum AudioQuality {
 /// streaming — sem NENHUM backend próprio. Não existe mais Railway/
 /// ytmusicapi na equação; o app fala direto com o YouTube.
 ///
+/// Todas as chamadas de rede passam por `_withFallback`, que tenta
+/// primeiro o cliente com proxy embutido e, se a rede falhar
+/// (SocketException, TimeoutException ou 403), cai automaticamente
+/// para o cliente direto — sem travar a UI e sem exigir configuração
+/// manual do usuário.
+///
 /// IMPORTANTE (limitação honesta): `youtube_explode_dart` enxerga o
 /// YouTube "normal", não o YouTube Music. Então não existem mais os
 /// conceitos de Álbum oficial, Rádio/"watch playlist" personalizada ou
@@ -36,23 +46,59 @@ enum AudioQuality {
 /// 100% fiel: busca de vídeos/músicas, canais (usados como "artista"),
 /// playlists do YouTube, e streaming.
 class MusicServices extends getx.GetxService {
-  late final yte.YoutubeExplode _yt;
+  late final yte.YoutubeExplode _ytProxy;
+  late final yte.YoutubeExplode _ytDirect;
 
   @override
   void onInit() {
     super.onInit();
-    _yt = YtClientProvider.create();
-    printINFO("🎵 MusicServices inicializado (100% on-device, youtube_explode_dart)");
+    _ytProxy = YtClientProvider.createProxyClient();
+    _ytDirect = YtClientProvider.createDefaultClient();
+    printINFO(
+        "🎵 MusicServices inicializado (100% on-device, youtube_explode_dart, com fallback de proxy)");
   }
 
   @override
   void onClose() {
-    _yt.close();
+    _ytProxy.close();
+    _ytDirect.close();
     super.onClose();
   }
 
   set hlCode(String code) {
     printINFO("hlCode set to: $code (ignorado, youtube_explode_dart não segmenta por idioma)");
+  }
+
+  // ============================================================
+  //  FALLBACK DE REDE (proxy -> direto)
+  // ============================================================
+
+  /// Executa [action] usando o cliente com proxy embutido. Se falhar por
+  /// motivo de rede (SocketException, TimeoutException ou HTTP 403),
+  /// tenta de novo imediatamente com o cliente direto (sem proxy). Erros
+  /// que não são de rede (parsing, vídeo indisponível, etc.) são
+  /// propagados na hora, sem tentar de novo.
+  Future<T> _withFallback<T>(
+    Future<T> Function(yte.YoutubeExplode yt) action,
+  ) async {
+    try {
+      return await action(_ytProxy).timeout(ProxyConfig.proxyTimeout);
+    } catch (e) {
+      if (!_isNetworkFailure(e)) {
+        rethrow;
+      }
+      printINFO("⚠️ Proxy falhou ($e) — tentando conexão direta...");
+    }
+
+    // Fallback: conexão direta. Se falhar aqui, o erro sobe para quem
+    // chamou _withFallback, que decide como logar/tratar.
+    return await action(_ytDirect).timeout(ProxyConfig.directTimeout);
+  }
+
+  bool _isNetworkFailure(Object e) {
+    if (e is SocketException || e is TimeoutException) return true;
+    final msg = e.toString().toLowerCase();
+    return msg.contains("403") || msg.contains("forbidden");
   }
 
   // ============================================================
@@ -83,7 +129,7 @@ class MusicServices extends getx.GetxService {
 
     try {
       printINFO("🔍 Buscando (on-device): '$query'");
-      final videos = await _yt.search.search(query);
+      final videos = await _withFallback((yt) => yt.search.search(query));
       categorized['Songs'] = videos.take(limit).map(_mapFromVideo).toList();
     } catch (e) {
       printERROR("❌ Erro na busca de vídeos: $e");
@@ -94,7 +140,8 @@ class MusicServices extends getx.GetxService {
     // isso falha silenciosamente e a busca continua funcionando só com
     // 'Songs', que é o essencial para tocar música.
     try {
-      final content = await _yt.search.searchContent(query);
+      final content =
+          await _withFallback((yt) => yt.search.searchContent(query));
       for (final item in content) {
         try {
           final dynamic dynItem = item;
@@ -181,7 +228,7 @@ class MusicServices extends getx.GetxService {
     final result = <Map<String, dynamic>>[];
     for (final query in _homeSeedQueries.take(limit)) {
       try {
-        final videos = await _yt.search.search(query);
+        final videos = await _withFallback((yt) => yt.search.search(query));
         final items = videos.take(15).map(_mapFromVideo).toList();
         if (items.isNotEmpty) {
           result.add({'title': _titleCase(query), 'contents': items});
@@ -204,7 +251,7 @@ class MusicServices extends getx.GetxService {
   Future<List<Map<String, dynamic>>> getCharts(String category,
       {String? countryCode}) async {
     try {
-      final videos = await _yt.search.search(category);
+      final videos = await _withFallback((yt) => yt.search.search(category));
       final items = videos.take(30).map(_mapFromVideo).toList();
       if (items.isEmpty) return [];
       return [
@@ -240,11 +287,12 @@ class MusicServices extends getx.GetxService {
 
     try {
       if (videoId.isNotEmpty) {
-        final video = await _yt.videos.get(videoId);
+        final video = await _withFallback((yt) => yt.videos.get(videoId));
         final tracks = <Map<String, dynamic>>[_mapFromVideo(video)];
 
         try {
-          final related = await _yt.videos.getRelatedVideos(video);
+          final related =
+              await _withFallback((yt) => yt.videos.getRelatedVideos(video));
           if (related != null) {
             tracks.addAll(related.take(limit - 1).map(_mapFromVideo));
           }
@@ -260,7 +308,8 @@ class MusicServices extends getx.GetxService {
           'additionalParamsForNext': null,
         };
       } else if (playlistId != null) {
-        final videos = await _yt.playlists.getVideos(playlistId).take(limit).toList();
+        final videos = await _withFallback(
+            (yt) => yt.playlists.getVideos(playlistId).take(limit).toList());
         return {
           'tracks': _toMediaItems(videos.map(_mapFromVideo).toList()),
           'playlistId': playlistId,
@@ -292,8 +341,9 @@ class MusicServices extends getx.GetxService {
     if (id == null) return {};
 
     try {
-      final playlist = await _yt.playlists.get(id);
-      final videos = await _yt.playlists.getVideos(id).take(limit).toList();
+      final playlist = await _withFallback((yt) => yt.playlists.get(id));
+      final videos = await _withFallback(
+          (yt) => yt.playlists.getVideos(id).take(limit).toList());
 
       final thumbUrl = _safe(() => playlist.thumbnails.highResUrl) ??
           _safe(() => playlist.thumbnails.standardResUrl);
@@ -344,10 +394,11 @@ class MusicServices extends getx.GetxService {
     };
 
     try {
-      final channel = await _yt.channels.get(artistId);
+      final channel = await _withFallback((yt) => yt.channels.get(artistId));
       List<yte.Video> uploads = [];
       try {
-        final uploadsList = await _yt.channels.getUploadsFromPage(artistId);
+        final uploadsList = await _withFallback(
+            (yt) => yt.channels.getUploadsFromPage(artistId));
         uploads = uploadsList.take(30).toList();
       } catch (e) {
         printERROR("⚠️ Uploads do canal indisponíveis: $e");
@@ -410,7 +461,7 @@ class MusicServices extends getx.GetxService {
   // ------------------------------------------------------------------
   Future<String> getSongYear(String songId) async {
     try {
-      final video = await _yt.videos.get(songId);
+      final video = await _withFallback((yt) => yt.videos.get(songId));
       if (video.uploadDate != null) return video.uploadDate!.year.toString();
     } catch (_) {}
     return DateTime.now().year.toString();
@@ -421,7 +472,7 @@ class MusicServices extends getx.GetxService {
   // ------------------------------------------------------------------
   Future<List> getSongWithId(String songId) async {
     try {
-      final video = await _yt.videos.get(songId);
+      final video = await _withFallback((yt) => yt.videos.get(songId));
       return [true, _toMediaItems([_mapFromVideo(video)])];
     } catch (e) {
       printERROR("❌ Erro no getSongWithId: $e");
@@ -443,8 +494,9 @@ class MusicServices extends getx.GetxService {
   Future<List<Map<String, dynamic>>> getContentRelatedToSong(
       String videoId, String hlCode) async {
     try {
-      final video = await _yt.videos.get(videoId);
-      final related = await _yt.videos.getRelatedVideos(video);
+      final video = await _withFallback((yt) => yt.videos.get(videoId));
+      final related =
+          await _withFallback((yt) => yt.videos.getRelatedVideos(video));
       if (related == null) return [];
       return related.map(_mapFromVideo).toList();
     } catch (e) {
@@ -458,7 +510,8 @@ class MusicServices extends getx.GetxService {
   // ------------------------------------------------------------------
   Future<List<String>> getSearchSuggestion(String queryStr) async {
     try {
-      final suggestions = await _yt.search.getQuerySuggestions(queryStr);
+      final suggestions =
+          await _withFallback((yt) => yt.search.getQuerySuggestions(queryStr));
       return List<String>.from(suggestions);
     } catch (e) {
       printERROR("⚠️ getSearchSuggestion indisponível nesta versão: $e");
