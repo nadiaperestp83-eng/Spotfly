@@ -10,7 +10,7 @@ class StreamProvider {
 
   static Future<StreamProvider> fetch(String videoId) async {
     final yt = YoutubeExplode();
-    
+
     try {
       final res = await yt.videos.streamsClient.getManifest(videoId);
       final audio = res.audioOnly;
@@ -23,8 +23,8 @@ class StreamProvider {
                   audioCodec:
                       e.audioCodec.contains('mp') ? Codec.mp4a : Codec.opus,
                   bitrate: e.bitrate.bitsPerSecond,
-                  duration: e.duration ?? 0,
-                  loudnessDb: e.loudnessDb,
+                  duration: 0, // não exposto pelo pacote oficial (só existia no fork)
+                  loudnessDb: 0.0, // idem
                   url: e.url.toString(),
                   size: e.size.totalBytes))
               .toList());
@@ -37,7 +37,7 @@ class StreamProvider {
       } else if (e is VideoUnplayableException) {
         return StreamProvider(
           playable: false,
-          statusMSG: e.reason ?? "Song is unplayable",
+          statusMSG: "Song is unplayable",
         );
       } else if (e is VideoRequiresPurchaseException) {
         return StreamProvider(
