@@ -6,6 +6,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yte;
 
 import '../models/media_Item_builder.dart';
 import '../utils/helper.dart';
+import 'yt_client_provider.dart';
 
 // ============================================================
 //  DEFINIÇÃO DA EXCEÇÃO NetworkError
@@ -40,7 +41,7 @@ class MusicServices extends getx.GetxService {
   @override
   void onInit() {
     super.onInit();
-    _yt = yte.YoutubeExplode();
+    _yt = YtClientProvider.create();
     printINFO("🎵 MusicServices inicializado (100% on-device, youtube_explode_dart)");
   }
 
