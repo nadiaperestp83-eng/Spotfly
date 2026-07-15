@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'yt_client_provider.dart';
+import 'package:harmonymusic/models/audio_model.dart';
 
 class StreamProvider {
   final bool playable;
