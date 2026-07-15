@@ -226,7 +226,10 @@ class SearchResultScreenController extends GetxController
 
     isResultContentFetced.value = true;
 
-    _maybeShowDebugCategoriesDialog(rawKeys, normalizedMap, errorMessage);
+    // Diálogo de debug desativado: já serviu para diagnosticar o problema
+    // de categorização. Se precisar depurar de novo, é só reativar a
+    // linha abaixo.
+    // _maybeShowDebugCategoriesDialog(rawKeys, normalizedMap, errorMessage);
   }
 
   /// Debug UI: se a busca não gerou nenhuma aba, se Songs/Videos vieram
