@@ -8,12 +8,8 @@ class StreamProvider {
   final bool playable;
   final List<Audio>? audioFormats;
   final String statusMSG;
-  
-  StreamProvider({
-    required this.playable, 
-    this.audioFormats, 
-    this.statusMSG = ""
-  });
+
+  StreamProvider({required this.playable, this.audioFormats, this.statusMSG = ""});
 
   static Future<StreamProvider> fetch(String videoId) async {
     final yt = YtClientProvider.create();
@@ -33,9 +29,10 @@ class StreamProvider {
           statusMSG: "OK",
           audioFormats: audio
               .map((e) => Audio(
-                  itag: e.tag.value,
-                  // Correção: comparando o tipo de codec do objeto AudioCodec
-                  audioCodec: e.audioCodec.name.contains('mp4a') ? Codec.mp4a : Codec.opus,
+                  // CORREÇÃO 1: e.tag já é o int (itag), não precisa de .value
+                  itag: e.tag, 
+                  // CORREÇÃO 2: Comparação direta com o tipo da biblioteca (AudioCodec.aac)
+                  audioCodec: e.audioCodec == AudioCodec.aac ? Codec.mp4a : Codec.opus,
                   bitrate: e.bitrate.bitsPerSecond,
                   duration: 0,
                   loudnessDb: 0.0,
@@ -61,7 +58,6 @@ class StreamProvider {
     }
   }
 
-  // Getters restaurados e completos para garantir que o downloader funcione
   Audio? get highestQualityAudio =>
       audioFormats?.firstWhere((item) => item.itag == 251 || item.itag == 140,
           orElse: () => audioFormats!.first);
