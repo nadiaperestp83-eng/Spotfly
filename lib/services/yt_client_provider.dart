@@ -9,10 +9,14 @@ class YtClientProvider {
   /// Cliente configurado com o proxy fixo definido em ProxyConfig.
   static YoutubeExplode createProxyClient() {
     try {
-      final httpClient = HttpClient()
-        ..findProxy = (uri) => "PROXY ${ProxyConfig.proxyAddress}"
-        ..badCertificateCallback = (cert, host, port) => true
-        ..connectionTimeout = ProxyConfig.proxyTimeout;
+      final HttpClient httpClient = HttpClient();
+
+      // Atribuições diretas (sem cascade) para evitar qualquer
+      // ambiguidade de parsing/formatação.
+      httpClient.findProxy = (Uri uri) => "PROXY ${ProxyConfig.proxyAddress}";
+      httpClient.badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
+      httpClient.connectionTimeout = ProxyConfig.proxyTimeout;
 
       final baseClient = io_client.IOClient(httpClient);
       return YoutubeExplode(httpClient: YoutubeHttpClient(baseClient));
@@ -25,5 +29,14 @@ class YtClientProvider {
   /// Cliente "limpo", sem proxy — usado no fallback.
   static YoutubeExplode createDefaultClient() {
     return YoutubeExplode();
+  }
+
+  /// Alias de compatibilidade com chamadas antigas (ex: music_service.dart).
+  /// Mantém o comportamento anterior: tenta o proxy por padrão.
+  /// Se preferir que TODO o app use o fallback automático, troque os
+  /// lugares que chamam `create()` para usar StreamProvider.fetchWithFallback
+  /// (ou exponha aqui um client "smart" — me avise se quiser isso).
+  static YoutubeExplode create() {
+    return createProxyClient();
   }
 }
