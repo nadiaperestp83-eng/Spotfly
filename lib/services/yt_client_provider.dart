@@ -7,7 +7,14 @@ import 'proxy_config.dart';
 /// outra "limpa" (conexão direta) para uso como fallback.
 class YtClientProvider {
   /// Cliente configurado com o proxy fixo definido em ProxyConfig.
+  /// Se nenhum proxy real estiver configurado (ProxyConfig.isConfigured
+  /// == false), devolve direto o cliente sem proxy — evita perder
+  /// tempo tentando resolver um host placeholder que nunca vai existir.
   static YoutubeExplode createProxyClient() {
+    if (!ProxyConfig.isConfigured) {
+      return createDefaultClient();
+    }
+
     try {
       final HttpClient httpClient = HttpClient();
 
@@ -31,11 +38,9 @@ class YtClientProvider {
     return YoutubeExplode();
   }
 
-  /// Alias de compatibilidade com chamadas antigas (ex: music_service.dart).
-  /// Mantém o comportamento anterior: tenta o proxy por padrão.
-  /// Se preferir que TODO o app use o fallback automático, troque os
-  /// lugares que chamam `create()` para usar StreamProvider.fetchWithFallback
-  /// (ou exponha aqui um client "smart" — me avise se quiser isso).
+  /// Alias de compatibilidade com chamadas antigas.
+  /// Mantém o comportamento anterior: tenta o proxy por padrão
+  /// (que, sem proxy configurado, já é equivalente ao direto).
   static YoutubeExplode create() {
     return createProxyClient();
   }
