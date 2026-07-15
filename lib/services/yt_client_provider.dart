@@ -20,16 +20,16 @@ class YtClientProvider {
     try {
       final address = _proxyAddress.trim();
       final httpClient = HttpClient();
+      
       httpClient.findProxy = (uri) => "PROXY $address";
       httpClient.badCertificateCallback = (cert, host, port) => true;
 
       final baseClient = io_client.IOClient(httpClient);
 
-      // Cria um YoutubeHttpClient com o client personalizado
-      final ytHttpClient = YoutubeHttpClient(client: baseClient);
-      return YoutubeExplode(ytHttpClient);
+      // CORREÇÃO: Passando o YoutubeHttpClient como argumento posicional
+      return YoutubeExplode(YoutubeHttpClient(baseClient));
     } catch (_) {
-      // Fallback para cliente padrão (sem proxy)
+      // Fallback para cliente padrão caso o proxy falhe
       return YoutubeExplode();
     }
   }
