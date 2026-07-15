@@ -1,4 +1,5 @@
 import 'package:harmonymusic/services/stream_service.dart'show Audio;
+import 'package:harmonymusic/models/audio_model.dart';
 
 class HMStreamingData {
   final bool playable;
