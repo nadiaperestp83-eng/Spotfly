@@ -2,10 +2,11 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../../../../core/models/home_section.dart';
 import '../../../../core/models/track.dart';
+import '../../../../services/yt_client_provider.dart';
 import '../i_music_source.dart';
 
 class YoutubeSource implements IMusicSource {
-  final YoutubeExplode _yt = YoutubeExplode();
+  final YoutubeExplode _yt = YtClientProvider.create();
 
   @override
   String get sourceId => 'youtube';
