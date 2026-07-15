@@ -32,11 +32,12 @@ enum AudioQuality {
 /// streaming — sem NENHUM backend próprio. Não existe mais Railway/
 /// ytmusicapi na equação; o app fala direto com o YouTube.
 ///
-/// Todas as chamadas de rede passam por `_withFallback`, que tenta
-/// primeiro o cliente com proxy embutido e, se a rede falhar
-/// (SocketException, TimeoutException ou 403), cai automaticamente
-/// para o cliente direto — sem travar a UI e sem exigir configuração
-/// manual do usuário.
+/// Todas as chamadas de rede passam por `_withFallback`. Se houver um
+/// proxy REAL configurado em ProxyConfig, tenta primeiro o cliente com
+/// proxy e, se a rede falhar (SocketException, TimeoutException ou
+/// 403), cai automaticamente para o cliente direto. Se não houver
+/// proxy configurado, vai direto pro cliente sem proxy — sem tentar
+/// nada inútil antes.
 ///
 /// IMPORTANTE (limitação honesta): `youtube_explode_dart` enxerga o
 /// YouTube "normal", não o YouTube Music. Então não existem mais os
@@ -46,21 +47,27 @@ enum AudioQuality {
 /// 100% fiel: busca de vídeos/músicas, canais (usados como "artista"),
 /// playlists do YouTube, e streaming.
 class MusicServices extends getx.GetxService {
-  late final yte.YoutubeExplode _ytProxy;
+  yte.YoutubeExplode? _ytProxy;
   late final yte.YoutubeExplode _ytDirect;
 
   @override
   void onInit() {
     super.onInit();
-    _ytProxy = YtClientProvider.createProxyClient();
+    // Só cria o cliente de proxy se houver um proxy REAL configurado em
+    // ProxyConfig. Sem isso, evitamos instanciar um segundo HttpClient à
+    // toa e qualquer tentativa (e timeout) desperdiçada em cima de um
+    // host placeholder que nunca vai resolver.
+    _ytProxy =
+        ProxyConfig.isConfigured ? YtClientProvider.createProxyClient() : null;
     _ytDirect = YtClientProvider.createDefaultClient();
-    printINFO(
-        "🎵 MusicServices inicializado (100% on-device, youtube_explode_dart, com fallback de proxy)");
+    printINFO(ProxyConfig.isConfigured
+        ? "🎵 MusicServices inicializado (100% on-device, youtube_explode_dart, com fallback de proxy)"
+        : "🎵 MusicServices inicializado (100% on-device, youtube_explode_dart, SEM proxy configurado — indo direto)");
   }
 
   @override
   void onClose() {
-    _ytProxy.close();
+    _ytProxy?.close();
     _ytDirect.close();
     super.onClose();
   }
@@ -73,16 +80,26 @@ class MusicServices extends getx.GetxService {
   //  FALLBACK DE REDE (proxy -> direto)
   // ============================================================
 
-  /// Executa [action] usando o cliente com proxy embutido. Se falhar por
-  /// motivo de rede (SocketException, TimeoutException ou HTTP 403),
-  /// tenta de novo imediatamente com o cliente direto (sem proxy). Erros
-  /// que não são de rede (parsing, vídeo indisponível, etc.) são
-  /// propagados na hora, sem tentar de novo.
+  /// Executa [action] usando o cliente com proxy embutido, se houver um
+  /// configurado. Se falhar por motivo de rede (SocketException,
+  /// TimeoutException ou HTTP 403), tenta de novo imediatamente com o
+  /// cliente direto (sem proxy). Erros que não são de rede (parsing,
+  /// vídeo indisponível, etc.) são propagados na hora, sem tentar de
+  /// novo. Sem proxy configurado, pula direto pro cliente sem proxy.
   Future<T> _withFallback<T>(
     Future<T> Function(yte.YoutubeExplode yt) action,
   ) async {
+    final proxyClient = _ytProxy;
+
+    // Sem proxy configurado: nem tenta, vai direto pro cliente sem
+    // proxy. Isso evita pagar o timeout de proxy (8s) à toa em toda
+    // chamada de rede quando não há proxy nenhum para usar.
+    if (proxyClient == null) {
+      return await action(_ytDirect).timeout(ProxyConfig.directTimeout);
+    }
+
     try {
-      return await action(_ytProxy).timeout(ProxyConfig.proxyTimeout);
+      return await action(proxyClient).timeout(ProxyConfig.proxyTimeout);
     } catch (e) {
       if (!_isNetworkFailure(e)) {
         rethrow;
