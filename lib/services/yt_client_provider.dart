@@ -26,7 +26,8 @@ class YtClientProvider {
       final baseClient = io_client.IOClient(httpClient);
 
       // Cria um YoutubeHttpClient com o client personalizado
-      final ytHttpClient = YoutubeHttpClient(client: baseClient);
+      // (youtube_explode_dart 2.5.3: parâmetro posicional, não nomeado)
+      final ytHttpClient = YoutubeHttpClient(baseClient);
       return YoutubeExplode(ytHttpClient);
     } catch (_) {
       // Fallback para cliente padrão (sem proxy)
