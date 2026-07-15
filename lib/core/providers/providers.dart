@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get/get.dart';
 
 import '../../features/search/data/i_music_source.dart';
-import '../../features/search/data/sources/jamendo_source.dart';
 import '../../features/search/data/sources/piped_source.dart';
 import '../../features/search/data/sources/yt_music_api_source.dart';
 import '../../features/search/domain/search_coordinator.dart';
@@ -31,16 +30,17 @@ final musicServicesProvider = Provider<MusicServices>((ref) {
 /// Lista de fontes usada pelo SearchCoordinator (Orquestrador) para o
 /// fallback automático e sequencial. A ORDEM É A PRIORIDADE:
 /// 1º YtMusicApiSource (YT Music interno, com categorias/paginação/Home)
-/// -> 2º PipedSource -> 3º JamendoSource.
+/// -> 2º PipedSource.
+/// JamendoSource foi removido de propósito: o app não deve mais cair
+/// para faixas do Jamendo como último recurso (o arquivo
+/// jamendo_source.dart continua no projeto, só não é mais usado aqui —
+/// pode ser deletado com segurança se não for mais precisar dele).
 /// Pra trocar a prioridade, reordenar a lista abaixo — nada mais muda
 /// (UI e notifiers não sabem que essa ordem existe).
 final musicSourcesProvider = Provider<List<IMusicSource>>((ref) {
   return [
     YtMusicApiSource(ref.watch(musicServicesProvider)),
     PipedSource(),
-    JamendoSource(
-      clientId: const String.fromEnvironment('JAMENDO_CLIENT_ID'),
-    ),
   ];
 });
 
