@@ -74,7 +74,7 @@ dev_dependencies:
 
 dependency_overrides:
   meta: 1.15.0
-
+  path: 1.9.1
 flutter:
   uses-material-design: true
   assets:
