@@ -655,6 +655,39 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ]),
               CustomExpansionTile(
+                  icon: Icons.vpn_lock,
+                  title: "proxy".tr,
+                  children: [
+                    ListTile(
+                      contentPadding: const EdgeInsets.only(left: 5, right: 10),
+                      title: Text("enableProxy".tr),
+                      subtitle: Text("enableProxyDes".tr,
+                          style: Theme.of(context).textTheme.bodyMedium),
+                      trailing: Obx(
+                        () => CustSwitch(
+                          value: settingsController.proxyEnabled.isTrue,
+                          onChanged: settingsController.toggleProxy,
+                        ),
+                      ),
+                    ),
+                    ListTile(
+                      contentPadding: const EdgeInsets.only(left: 5, right: 10),
+                      title: Text("proxyAddress".tr),
+                      subtitle: Obx(
+                        () => Text(
+                          settingsController.proxyAddress.value.isEmpty
+                              ? "proxyAddressDes".tr
+                              : settingsController.proxyAddress.value,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                      onTap: () => showDialog(
+                        context: context,
+                        builder: (context) => const ProxyAddressDialog(),
+                      ),
+                    ),
+                  ]),
+              CustomExpansionTile(
                 icon: Icons.info,
                 title: "appInfo".tr,
                 children: [
@@ -817,6 +850,80 @@ class DiscoverContentSelectorDialog extends StatelessWidget {
                 onTap: () => Navigator.of(context).pop(),
               ))
         ]),
+      ),
+    );
+  }
+}
+
+class ProxyAddressDialog extends StatefulWidget {
+  const ProxyAddressDialog({super.key});
+
+  @override
+  State<ProxyAddressDialog> createState() => _ProxyAddressDialogState();
+}
+
+class _ProxyAddressDialogState extends State<ProxyAddressDialog> {
+  late final TextEditingController _textController;
+  final settingsController = Get.find<SettingsScreenController>();
+
+  @override
+  void initState() {
+    super.initState();
+    _textController =
+        TextEditingController(text: settingsController.proxyAddress.value);
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CommonDialog(
+      child: Container(
+        padding: const EdgeInsets.only(top: 30, left: 20, right: 20, bottom: 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "proxyAddress".tr,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: _textController,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: "proxyAddressHint".tr,
+                border: const OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.url,
+            ),
+            const SizedBox(height: 15),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text("cancel".tr),
+                ),
+                TextButton(
+                  onPressed: () {
+                    settingsController
+                        .setProxyAddress(_textController.text.trim());
+                    Navigator.of(context).pop();
+                  },
+                  child: Text("save".tr),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
