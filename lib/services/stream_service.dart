@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import 'yt_client_provider.dart';
 
 class StreamProvider {
   final bool playable;
@@ -9,8 +10,8 @@ class StreamProvider {
       {required this.playable, this.audioFormats, this.statusMSG = ""});
 
   static Future<StreamProvider> fetch(String videoId) async {
-    final yt = YoutubeExplode();
-
+    final yt = YtClientProvider.create();
+    
     try {
       final res = await yt.videos.streamsClient.getManifest(videoId);
       final audio = res.audioOnly;
