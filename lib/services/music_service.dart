@@ -346,7 +346,8 @@ class MusicServices extends getx.GetxService {
       final channel = await _yt.channels.get(artistId);
       List<yte.Video> uploads = [];
       try {
-        uploads = await _yt.channels.getUploadsFromPage(artistId).take(30).toList();
+        final uploadsList = await _yt.channels.getUploadsFromPage(artistId);
+        uploads = uploadsList.take(30).toList();
       } catch (e) {
         printERROR("⚠️ Uploads do canal indisponíveis: $e");
       }
