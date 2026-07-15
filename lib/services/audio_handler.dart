@@ -31,6 +31,7 @@ import '../ui/screens/Settings/settings_screen_controller.dart';
 import '../ui/screens/Library/library_controller.dart';
 // ignore: unused_import, implementation_imports, depend_on_referenced_packages
 import "package:media_kit/src/player/platform_player.dart" show MPVLogLevel;
+import 'package:harmonymusic/models/audio_model.dart';
 
 Future<AudioHandler> initAudioService() async {
   return await AudioService.init(
