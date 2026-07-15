@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'yt_client_provider.dart';
+import 'proxy_config.dart';
 import 'package:harmonymusic/models/audio_model.dart';
 
 class StreamProvider {
@@ -25,7 +26,7 @@ class StreamProvider {
     final proxyAttempt = await _tryFetch(
       proxyYt,
       videoId,
-      timeout: ProxyConfigTimeout.proxy,
+      timeout: ProxyConfig.proxyTimeout,
     );
 
     if (proxyAttempt.result != null) {
@@ -34,7 +35,7 @@ class StreamProvider {
 
     if (!proxyAttempt.shouldFallback) {
       // Erro "definitivo" (ex: vídeo indisponível) — não faz sentido
-      // tentar de novo, o problema não é o proxy.
+      // tentar de novo sem proxy, o problema não é o proxy.
       return proxyAttempt.errorResult!;
     }
 
@@ -43,7 +44,7 @@ class StreamProvider {
     final directAttempt = await _tryFetch(
       directYt,
       videoId,
-      timeout: ProxyConfigTimeout.direct,
+      timeout: ProxyConfig.directTimeout,
     );
 
     if (directAttempt.result != null) {
@@ -56,8 +57,6 @@ class StreamProvider {
   }
 
   /// Executa uma tentativa de busca do manifesto num client específico.
-  /// Retorna um `_FetchAttempt` indicando sucesso, ou se deve/não deve
-  /// cair no fallback.
   static Future<_FetchAttempt> _tryFetch(
     YoutubeExplode yt,
     String videoId, {
@@ -83,7 +82,7 @@ class StreamProvider {
         audioFormats: audio
             .map((e) => Audio(
                 itag: e.tag,
-                audioCodec: e.audioCodec == AudioCodec.aac ? Codec.mp4a : Codec.opus,
+                audioCodec: _isAacContainer(e) ? Codec.mp4a : Codec.opus,
                 bitrate: e.bitrate.bitsPerSecond,
                 duration: 0,
                 loudnessDb: 0.0,
@@ -94,20 +93,17 @@ class StreamProvider {
 
       return _FetchAttempt.success(streamProvider);
     } on TimeoutException {
-      // Timeout -> aciona fallback
       return _FetchAttempt.error(
         StreamProvider(playable: false, statusMSG: "Network timeout"),
         shouldFallback: true,
       );
     } on SocketException {
-      // Sem conexão / proxy caiu -> aciona fallback
       return _FetchAttempt.error(
         StreamProvider(playable: false, statusMSG: "networkError"),
         shouldFallback: true,
       );
     } catch (e) {
       if (_is403Forbidden(e)) {
-        // Proxy bloqueado/banido pelo YouTube -> aciona fallback
         return _FetchAttempt.error(
           StreamProvider(playable: false, statusMSG: "networkError"),
           shouldFallback: true,
@@ -128,8 +124,6 @@ class StreamProvider {
           shouldFallback: false,
         );
       } else if (e is YoutubeExplodeException) {
-        // Erro genérico da lib: não necessariamente é o proxy,
-        // mas por segurança tentamos o fallback direto também.
         return _FetchAttempt.error(
           StreamProvider(playable: false, statusMSG: e.message),
           shouldFallback: true,
@@ -145,11 +139,18 @@ class StreamProvider {
     }
   }
 
-  /// Detecta erro HTTP 403 dentro da mensagem/exception lançada
-  /// pelo youtube_explode_dart (a lib nem sempre expõe um tipo dedicado).
+  /// Detecta erro HTTP 403 na mensagem/exception lançada pela lib
+  /// (nem sempre exposta como um tipo dedicado).
   static bool _is403Forbidden(Object e) {
     final msg = e.toString().toLowerCase();
     return msg.contains("403") || msg.contains("forbidden");
+  }
+
+  /// Infere se o stream é AAC (container mp4/m4a) em vez de Opus (webm),
+  /// já que a lib não expõe mais uma classe/enum `AudioCodec`.
+  static bool _isAacContainer(AudioOnlyStreamInfo e) {
+    final containerName = e.container.name.toLowerCase();
+    return containerName.contains('mp4') || containerName.contains('m4a');
   }
 
   Audio? get highestQualityAudio =>
@@ -178,8 +179,6 @@ class StreamProvider {
   }
 }
 
-/// Resultado interno de uma tentativa de fetch, usado só dentro
-/// desta classe para decidir se cai no fallback ou não.
 class _FetchAttempt {
   final StreamProvider? result;
   final StreamProvider? errorResult;
@@ -191,18 +190,4 @@ class _FetchAttempt {
 
   _FetchAttempt.error(this.errorResult, {required this.shouldFallback})
       : result = null;
-}
-
-/// Pequeno wrapper para deixar explícito qual timeout é usado em
-/// cada tentativa (proxy vs direto), lendo de ProxyConfig.
-class ProxyConfigTimeout {
-  static Duration get proxy =>
-      _ProxyConfigTimeoutHelper.proxyTimeout;
-  static Duration get direct =>
-      _ProxyConfigTimeoutHelper.directTimeout;
-}
-
-class _ProxyConfigTimeoutHelper {
-  static const Duration proxyTimeout = Duration(seconds: 8);
-  static const Duration directTimeout = Duration(seconds: 12);
 }
