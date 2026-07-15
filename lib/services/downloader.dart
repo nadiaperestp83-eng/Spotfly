@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:hive/hive.dart';
+import 'package:harmonymusic/models/audio_model.dart';
 
 import '../ui/screens/Album/album_screen_controller.dart';
 import '../ui/screens/Playlist/playlist_screen_controller.dart';
