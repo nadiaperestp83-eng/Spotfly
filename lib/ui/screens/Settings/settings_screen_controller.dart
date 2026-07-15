@@ -49,6 +49,10 @@ class SettingsScreenController extends GetxController {
   final cacheHomeScreenData = true.obs;
   final currentVersion = "V1.12.2";
 
+  // Novos campos para a integração de Proxy
+  final proxyEnabled = false.obs;
+  final proxyAddress = "".obs;
+
   @override
   void onInit() {
     _setInitValue();
@@ -129,6 +133,10 @@ class SettingsScreenController extends GetxController {
     }
     autoDownloadFavoriteSongEnabled.value =
         setBox.get("autoDownloadFavoriteSongEnabled") ?? false;
+
+    // Inicialização dos valores de Proxy a partir do Hive
+    proxyEnabled.value = setBox.get("proxyEnabled") ?? false;
+    proxyAddress.value = setBox.get("proxyAddress") ?? "";
   }
 
   void setAppLanguage(String? val) {
@@ -357,5 +365,16 @@ class SettingsScreenController extends GetxController {
     } else {
       return (await getApplicationDocumentsDirectory()).path;
     }
+  }
+
+  // Métodos de ativação/desativação e atribuição do Proxy
+  void toggleProxy(bool val) {
+    setBox.put('proxyEnabled', val);
+    proxyEnabled.value = val;
+  }
+
+  void setProxyAddress(String val) {
+    setBox.put('proxyAddress', val);
+    proxyAddress.value = val;
   }
 }
