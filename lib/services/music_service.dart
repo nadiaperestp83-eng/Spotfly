@@ -1,15 +1,11 @@
 // ignore_for_file: constant_identifier_names
 
-import 'dart:async';
-import 'dart:convert';
-
 import 'package:audio_service/audio_service.dart';
 import 'package:get/get.dart' as getx;
-import 'package:http/http.dart' as http;
+import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yte;
 
 import '../models/media_Item_builder.dart';
 import '../utils/helper.dart';
-import 'constant.dart';
 
 // ============================================================
 //  DEFINIÇÃO DA EXCEÇÃO NetworkError
@@ -26,61 +22,36 @@ enum AudioQuality {
   High,
 }
 
-/// MusicServices agora é apenas um CLIENTE HTTP para o roteador de
-/// metadados no Railway (que por sua vez fala com o YouTube Music via
-/// `ytmusicapi`). Nenhum áudio passa por aqui — este serviço só lida
-/// com JSON (busca, home, playlists, álbuns, artistas, letras).
+/// MusicServices agora segue a MESMA técnica da Musify (gokadzev/Musify):
+/// tudo roda no próprio app via `youtube_explode_dart` — busca, home e
+/// streaming — sem NENHUM backend próprio. Não existe mais Railway/
+/// ytmusicapi na equação; o app fala direto com o YouTube.
 ///
-/// Toda chamada é protegida por try/catch: se o Railway estiver fora
-/// do ar ou a rede falhar, os métodos devolvem uma estrutura vazia
-/// (nunca lançam exceção para a UI, exceto onde isso já era esperado).
+/// IMPORTANTE (limitação honesta): `youtube_explode_dart` enxerga o
+/// YouTube "normal", não o YouTube Music. Então não existem mais os
+/// conceitos de Álbum oficial, Rádio/"watch playlist" personalizada ou
+/// letras (lyrics) — a Musify também não tem isso (ela é essencialmente
+/// um player de vídeos do YouTube focado em áudio). O que dá para manter
+/// 100% fiel: busca de vídeos/músicas, canais (usados como "artista"),
+/// playlists do YouTube, e streaming.
 class MusicServices extends getx.GetxService {
-  static const Duration _timeout = Duration(seconds: 12);
+  late final yte.YoutubeExplode _yt;
 
   @override
   void onInit() {
     super.onInit();
-    printINFO("🎵 MusicServices inicializado (proxy: $proxyBaseUrl)");
+    _yt = yte.YoutubeExplode();
+    printINFO("🎵 MusicServices inicializado (100% on-device, youtube_explode_dart)");
+  }
+
+  @override
+  void onClose() {
+    _yt.close();
+    super.onClose();
   }
 
   set hlCode(String code) {
-    printINFO("hlCode set to: $code (idioma é definido no servidor Railway)");
-  }
-
-  // ============================================================
-  //  NÚCLEO HTTP
-  // ============================================================
-
-  Uri _uri(String path, [Map<String, dynamic>? query]) {
-    final cleanQuery = <String, String>{};
-    query?.forEach((key, value) {
-      if (value != null) cleanQuery[key] = value.toString();
-    });
-    return Uri.parse('$proxyBaseUrl$path').replace(
-      queryParameters: cleanQuery.isEmpty ? null : cleanQuery,
-    );
-  }
-
-  /// GET genérico contra o Railway. Retorna `null` em qualquer falha
-  /// (rede, timeout, status != 200, JSON inválido) para que cada método
-  /// público decida seu próprio fallback "inteligente" sem derrubar o app.
-  Future<dynamic> _get(String path, [Map<String, dynamic>? query]) async {
-    final uri = _uri(path, query);
-    try {
-      printINFO("📡 GET $uri");
-      final response = await http.get(uri).timeout(_timeout);
-      if (response.statusCode != 200) {
-        printERROR("❌ $path retornou ${response.statusCode}");
-        return null;
-      }
-      return jsonDecode(utf8.decode(response.bodyBytes));
-    } on TimeoutException {
-      printERROR("⏱️ Timeout em $path");
-      return null;
-    } catch (e) {
-      printERROR("❌ Erro de rede em $path: $e");
-      return null;
-    }
+    printINFO("hlCode set to: $code (ignorado, youtube_explode_dart não segmenta por idioma)");
   }
 
   // ============================================================
@@ -88,7 +59,12 @@ class MusicServices extends getx.GetxService {
   // ============================================================
 
   // ------------------------------------------------------------------
-  // 1. SEARCH - categoriza resultados
+  // 1. SEARCH
+  //    youtube_explode_dart não categoriza como o YT Music (não separa
+  //    Álbuns de Músicas, por exemplo). Fazemos o melhor esforço:
+  //    'Songs' vem de search.search (vídeos), 'Artists' e
+  //    'Featured playlists' vêm de search.searchContent quando o canal/
+  //    playlist aparece nos resultados.
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> search(
     String query, {
@@ -98,127 +74,151 @@ class MusicServices extends getx.GetxService {
     bool ignoreSpelling = false,
     String? filterParams,
   }) async {
-    final data = await _get('/search', {
-      'q': query,
-      'limit': limit,
-      'filter': filter,
-      'ignore_spelling': ignoreSpelling,
-    });
-
-    if (data == null) return {};
+    final Map<String, List<Map<String, dynamic>>> categorized = {
+      'Songs': [],
+      'Artists': [],
+      'Featured playlists': [],
+    };
 
     try {
-      final List results = (data['results'] as List?) ?? [];
-      final Map<String, List<Map<String, dynamic>>> categorized = {
-        'Songs': [],
-        'Videos': [],
-        'Albums': [],
-        'Artists': [],
-        'Featured playlists': [],
-        'Community playlists': [],
-      };
-
-      for (final raw in results) {
-        final item = Map<String, dynamic>.from(raw as Map);
-        final category = _categoryFor(item);
-        if (category == null) continue;
-        categorized[category]!.add(_normalizeResultItem(item, category));
-      }
-
-      categorized.removeWhere((key, value) => value.isEmpty);
-      printINFO("📊 Categorias encontradas: ${categorized.keys}");
-      return categorized;
+      printINFO("🔍 Buscando (on-device): '$query'");
+      final videos = await _yt.search.search(query);
+      categorized['Songs'] = videos.take(limit).map(_mapFromVideo).toList();
     } catch (e) {
-      printERROR("❌ Erro ao processar resposta de search: $e");
-      return {};
+      printERROR("❌ Erro na busca de vídeos: $e");
     }
+
+    // Melhor esforço: canais e playlists via searchContent. Se a API não
+    // bater 1:1 (nomes de campos podem variar entre versões do pacote),
+    // isso falha silenciosamente e a busca continua funcionando só com
+    // 'Songs', que é o essencial para tocar música.
+    try {
+      final content = await _yt.search.searchContent(query);
+      for (final item in content) {
+        try {
+          final dynamic dynItem = item;
+          if (dynItem is yte.Video) {
+            continue; // já coberto por search.search acima
+          } else if (_looksLikeChannel(dynItem)) {
+            categorized['Artists']!.add(_mapFromChannelLike(dynItem));
+          } else if (_looksLikePlaylist(dynItem)) {
+            categorized['Featured playlists']!.add(_mapFromPlaylistLike(dynItem));
+          }
+        } catch (_) {
+          continue;
+        }
+      }
+    } catch (e) {
+      printERROR("⚠️ searchContent indisponível/mudou de forma nesta versão: $e");
+    }
+
+    categorized.removeWhere((key, value) => value.isEmpty);
+    printINFO("📊 Categorias encontradas: ${categorized.keys}");
+    return categorized;
   }
 
-  String? _categoryFor(Map<String, dynamic> item) {
-    final resultType = (item['resultType'] as String?)?.toLowerCase() ?? '';
-    final category = (item['category'] as String?)?.toLowerCase() ?? '';
-    final combined = '$resultType $category';
-
-    if (combined.contains('song')) return 'Songs';
-    if (combined.contains('video')) return 'Videos';
-    if (combined.contains('album')) return 'Albums';
-    if (combined.contains('artist')) return 'Artists';
-    if (combined.contains('community')) return 'Community playlists';
-    if (combined.contains('playlist')) return 'Featured playlists';
-    // fallback por campos presentes
-    if (item['videoId'] != null) return 'Songs';
-    if (item['browseId'] != null) {
-      final id = item['browseId'] as String;
-      if (id.startsWith('MPRE')) return 'Albums';
-      if (id.startsWith('UC')) return 'Artists';
-    }
-    if (item['playlistId'] != null) return 'Featured playlists';
-    return null;
+  bool _looksLikeChannel(dynamic item) {
+    final typeName = item.runtimeType.toString().toLowerCase();
+    return typeName.contains('channel');
   }
 
-  Map<String, dynamic> _normalizeResultItem(
-      Map<String, dynamic> item, String category) {
-    item['thumbnails'] = _safeThumbnails(item['thumbnails']);
-    if (category == 'Songs' || category == 'Videos') {
-      item['duration'] = _durationSeconds(item);
-      item['album'] = _normalizedAlbum(item['album']);
-    } else if (category == 'Artists') {
-      // Artist.fromJson espera a chave 'artist' (nome), não 'name'
-      item['artist'] ??= item['artist'] ?? item['title'];
+  bool _looksLikePlaylist(dynamic item) {
+    final typeName = item.runtimeType.toString().toLowerCase();
+    return typeName.contains('playlist');
+  }
+
+  Map<String, dynamic> _mapFromChannelLike(dynamic c) {
+    return {
+      'browseId': _safe(() => c.id.value.toString()) ?? '',
+      'artist': _safe(() => c.title as String) ?? '',
+      'name': _safe(() => c.title as String) ?? '',
+      'thumbnails': _thumbFromDynamic(c),
+      'resultType': 'artist',
+    };
+  }
+
+  Map<String, dynamic> _mapFromPlaylistLike(dynamic p) {
+    return {
+      'playlistId': _safe(() => p.id.value.toString()) ?? '',
+      'browseId': _safe(() => p.id.value.toString()) ?? '',
+      'title': _safe(() => p.title as String) ?? '',
+      'thumbnails': _thumbFromDynamic(p),
+      'resultType': 'playlist',
+    };
+  }
+
+  List<Map<String, dynamic>> _thumbFromDynamic(dynamic item) {
+    final url = _safe(() => item.thumbnails.highResUrl as String) ??
+        _safe(() => item.thumbnails.standardResUrl as String) ??
+        _safe(() => item.thumbnails.mediumResUrl as String);
+    return _safeThumbnails(url == null ? null : [
+      {'url': url}
+    ]);
+  }
+
+  T? _safe<T>(T? Function() getter) {
+    try {
+      return getter();
+    } catch (_) {
+      return null;
     }
-    return item;
   }
 
   // ------------------------------------------------------------------
   // 2. GET HOME
+  //    youtube_explode_dart não tem um feed de "página inicial"
+  //    personalizado (isso é exclusivo do YT Music). Como a Musify,
+  //    montamos seções a partir de buscas por termos populares.
   // ------------------------------------------------------------------
-  Future<List<Map<String, dynamic>>> getHome({int limit = 4}) async {
-    final data = await _get('/get_home', {'limit': limit});
-    if (data == null) return [];
+  static const List<String> _homeSeedQueries = [
+    'top hits 2026',
+    'músicas mais tocadas',
+    'lançamentos desta semana',
+  ];
 
-    try {
-      final List sections = (data['sections'] as List?) ?? [];
-      final result = <Map<String, dynamic>>[];
-      for (final raw in sections) {
-        final section = Map<String, dynamic>.from(raw as Map);
-        final contents = (section['contents'] as List?) ?? [];
-        final items = contents
-            .map((e) {
-              final item = Map<String, dynamic>.from(e as Map);
-              item['thumbnails'] = _safeThumbnails(item['thumbnails']);
-              return item;
-            })
-            .where((item) => item.isNotEmpty)
-            .toList();
+  Future<List<Map<String, dynamic>>> getHome({int limit = 4}) async {
+    final result = <Map<String, dynamic>>[];
+    for (final query in _homeSeedQueries.take(limit)) {
+      try {
+        final videos = await _yt.search.search(query);
+        final items = videos.take(15).map(_mapFromVideo).toList();
         if (items.isNotEmpty) {
-          result.add({'title': section['title'] ?? '', 'contents': items});
+          result.add({'title': _titleCase(query), 'contents': items});
         }
+      } catch (e) {
+        printERROR("❌ Erro ao montar seção Home '$query': $e");
       }
-      printINFO("📊 Home retornou ${result.length} seções");
-      return result;
+    }
+    printINFO("📊 Home retornou ${result.length} seções");
+    return result;
+  }
+
+  String _titleCase(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+  // ------------------------------------------------------------------
+  // 3. GET CHARTS - reusa getHome/search como fallback (sem endpoint
+  //    de charts oficial fora do YT Music)
+  // ------------------------------------------------------------------
+  Future<List<Map<String, dynamic>>> getCharts(String category,
+      {String? countryCode}) async {
+    try {
+      final videos = await _yt.search.search(category);
+      final items = videos.take(30).map(_mapFromVideo).toList();
+      if (items.isEmpty) return [];
+      return [
+        {'title': category, 'contents': items}
+      ];
     } catch (e) {
-      printERROR("❌ Erro ao processar Home: $e");
+      printERROR("❌ Erro no getCharts: $e");
       return [];
     }
   }
 
   // ------------------------------------------------------------------
-  // 3. GET CHARTS - fallback usando search (sem endpoint dedicado)
-  // ------------------------------------------------------------------
-  Future<List<Map<String, dynamic>>> getCharts(String category,
-      {String? countryCode}) async {
-    printINFO("⚠️ getCharts: usando search como fallback.");
-    final categorized = await search(category, limit: 30);
-    if (categorized.isEmpty) return [];
-    final allItems = categorized.values.expand((v) => v).toList();
-    if (allItems.isEmpty) return [];
-    return [
-      {'title': category, 'contents': allItems}
-    ];
-  }
-
-  // ------------------------------------------------------------------
-  // 4. GET WATCH PLAYLIST - tracks vêm como List<MediaItem>
+  // 4. GET WATCH PLAYLIST
+  //    Sem "rádio" oficial do YT Music: usamos vídeos relacionados do
+  //    YouTube (getRelatedVideos) como substituto de "próximas músicas".
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getWatchPlaylist({
     String videoId = "",
@@ -237,38 +237,48 @@ class MusicServices extends getx.GetxService {
       'additionalParamsForNext': null,
     };
 
-    final data = await _get('/get_watch_playlist', {
-      'videoId': videoId.isNotEmpty ? videoId : null,
-      'playlistId': playlistId,
-      'limit': limit,
-      'radio': radio,
-      'shuffle': shuffle,
-    });
-
-    if (data == null) return empty;
-
     try {
-      final List rawTracks = (data['tracks'] as List?) ?? [];
-      final tracks = _toMediaItems(rawTracks);
-      return {
-        'tracks': tracks,
-        'playlistId': data['playlistId'] ?? playlistId ?? '',
-        'lyrics': data['lyrics'],
-        'related': data['related'],
-        // O ytmusicapi já devolve a lista completa (sem paginação por
-        // token nesta rota), então não há continuação adicional.
-        'additionalParamsForNext': null,
-      };
+      if (videoId.isNotEmpty) {
+        final video = await _yt.videos.get(videoId);
+        final tracks = <Map<String, dynamic>>[_mapFromVideo(video)];
+
+        try {
+          final related = await _yt.videos.getRelatedVideos(video);
+          if (related != null) {
+            tracks.addAll(related.take(limit - 1).map(_mapFromVideo));
+          }
+        } catch (e) {
+          printERROR("⚠️ Vídeos relacionados indisponíveis: $e");
+        }
+
+        return {
+          'tracks': _toMediaItems(tracks),
+          'playlistId': playlistId ?? '',
+          'lyrics': null, // sem API de letras fora do YT Music
+          'related': null,
+          'additionalParamsForNext': null,
+        };
+      } else if (playlistId != null) {
+        final videos = await _yt.playlists.getVideos(playlistId).take(limit).toList();
+        return {
+          'tracks': _toMediaItems(videos.map(_mapFromVideo).toList()),
+          'playlistId': playlistId,
+          'lyrics': null,
+          'related': null,
+          'additionalParamsForNext': null,
+        };
+      }
+      return empty;
     } catch (e) {
-      printERROR("❌ Erro ao processar getWatchPlaylist: $e");
+      printERROR("❌ Erro no getWatchPlaylist: $e");
       return empty;
     }
   }
 
   // ------------------------------------------------------------------
   // 5. GET PLAYLIST OR ALBUM SONGS
-  //    Retorna, no nível raiz, as chaves que Playlist.fromJson /
-  //    Album.fromJson esperam, MAIS 'tracks' como List<MediaItem>.
+  //    Não existe "álbum oficial" fora do YT Music: albumId é tratado
+  //    como um playlistId comum (é o que a Musify também faz).
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getPlaylistOrAlbumSongs({
     String? playlistId,
@@ -277,36 +287,34 @@ class MusicServices extends getx.GetxService {
     bool related = false,
     int suggestionsLimit = 0,
   }) async {
+    final id = playlistId ?? albumId;
+    if (id == null) return {};
+
     try {
-      if (playlistId != null) {
-        final data =
-            await _get('/get_playlist', {'playlistId': playlistId, 'limit': limit});
-        if (data == null) return {};
-        final map = Map<String, dynamic>.from(data as Map);
-        final rawTracks = (map['tracks'] as List?) ?? [];
-        return {
-          ...map,
-          'playlistId': map['id'] ?? playlistId,
-          'itemCount': map['trackCount']?.toString() ?? rawTracks.length.toString(),
-          'thumbnails': _safeThumbnails(map['thumbnails']),
-          'description': map['description'] ?? 'Playlist',
-          'tracks': _toMediaItems(rawTracks),
-        };
-      } else if (albumId != null) {
-        final data = await _get('/get_album', {'browseId': albumId});
-        if (data == null) return {};
-        final map = Map<String, dynamic>.from(data as Map);
-        final rawTracks = (map['tracks'] as List?) ?? [];
-        return {
-          ...map,
-          'browseId': albumId,
-          'thumbnails': _safeThumbnails(map['thumbnails']),
-          'description': map['description'] ?? map['type'] ?? 'Album',
-          'tracks': _toMediaItems(rawTracks),
-          'other_versions': map['other_versions'] ?? [],
-        };
-      }
-      return {};
+      final playlist = await _yt.playlists.get(id);
+      final videos = await _yt.playlists.getVideos(id).take(limit).toList();
+
+      final thumbUrl = _safe(() => playlist.thumbnails.highResUrl) ??
+          _safe(() => playlist.thumbnails.standardResUrl);
+
+      return {
+        'title': playlist.title,
+        'playlistId': playlist.id.value,
+        'browseId': playlist.id.value,
+        'thumbnails': _safeThumbnails(thumbUrl == null ? null : [
+          {'url': thumbUrl}
+        ]),
+        'description': playlist.description.isNotEmpty
+            ? playlist.description
+            : 'Playlist',
+        'itemCount': (playlist.videoCount ?? videos.length).toString(),
+        'artists': [
+          {'name': playlist.author}
+        ],
+        'year': '',
+        'tracks': _toMediaItems(videos.map(_mapFromVideo).toList()),
+        'other_versions': [],
+      };
     } catch (e) {
       printERROR("❌ Erro no getPlaylistOrAlbumSongs: $e");
       return {};
@@ -315,9 +323,9 @@ class MusicServices extends getx.GetxService {
 
   // ------------------------------------------------------------------
   // 6. GET ARTIST
-  //    Monta as chaves ("Top songs", "Videos", "Albums", "Singles & EPs")
-  //    que ArtistScreenController já espera, sem chave 'params' (assim
-  //    a UI usa o caminho direto, sem precisar de continuação).
+  //    "Artista" = canal do YouTube. 'Top songs' vem dos uploads do
+  //    canal. Sem chave 'params', então a UI usa o caminho direto
+  //    (sem paginação por token).
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getArtist(String artistId) async {
     final fallback = {
@@ -334,54 +342,37 @@ class MusicServices extends getx.GetxService {
       'Singles & EPs': {'content': []},
     };
 
-    final data = await _get('/get_artist', {'browseId': artistId});
-    if (data == null) return fallback;
-
     try {
-      final map = Map<String, dynamic>.from(data as Map);
-      List<Map<String, dynamic>> section(String key) {
-        final sec = map[key];
-        if (sec is! Map) return [];
-        final results = sec['results'];
-        if (results is! List) return [];
-        return results
-            .map((e) {
-              final item = Map<String, dynamic>.from(e as Map);
-              item['thumbnails'] = _safeThumbnails(item['thumbnails']);
-              if (key == 'songs') {
-                item['duration'] = _durationSeconds(item);
-                item['album'] = _normalizedAlbum(item['album']);
-              }
-              return item;
-            })
-            .toList();
+      final channel = await _yt.channels.get(artistId);
+      List<yte.Video> uploads = [];
+      try {
+        uploads = await _yt.channels.getUploadsFromPage(artistId).take(30).toList();
+      } catch (e) {
+        printERROR("⚠️ Uploads do canal indisponíveis: $e");
       }
 
       return {
-        'name': map['name'] ?? 'Artist $artistId',
-        'artist': map['name'] ?? 'Artist $artistId',
-        'browseId': map['channelId'] ?? artistId,
-        'thumbnails': _safeThumbnails(map['thumbnails']),
-        'description': map['description'] ?? '',
-        'subscribers': map['subscribers']?.toString() ?? '0',
-        'radioId': map['radioId'] ?? '',
-        'Top songs': {'content': section('songs')},
-        'Videos': {'content': section('videos')},
-        'Albums': {'content': section('albums')},
-        'Singles & EPs': {'content': section('singles')},
+        'name': channel.title,
+        'artist': channel.title,
+        'browseId': channel.id.value,
+        'thumbnails': _safeThumbnails(
+            [{'url': channel.logoUrl}]),
+        'description': '',
+        'subscribers': _safe(() => channel.subscribersCount.toString()) ?? '',
+        'radioId': '',
+        'Top songs': {'content': uploads.map(_mapFromVideo).toList()},
+        'Videos': {'content': []},
+        'Albums': {'content': []},
+        'Singles & EPs': {'content': []},
       };
     } catch (e) {
-      printERROR("❌ Erro ao processar getArtist: $e");
+      printERROR("❌ Erro no getArtist: $e");
       return fallback;
     }
   }
 
   // ------------------------------------------------------------------
-  // 7. GET ARTIST RELATED CONTENT
-  //    Não há paginação por token no proxy (o ytmusicapi já devolve as
-  //    listas completas em getArtist), então isso só existe para não
-  //    quebrar chamadas legadas — na prática, getArtist já entrega tudo
-  //    sem a chave 'params', então este método não deveria ser acionado.
+  // 7. GET ARTIST RELATED CONTENT - sem paginação por token disponível
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getArtistRelatedContent(
     dynamic browseEndpointOrArtistId,
@@ -389,11 +380,9 @@ class MusicServices extends getx.GetxService {
     int limit = 10,
     Map<String, dynamic>? additionalParams,
   }) async {
-    printINFO("⚠️ getArtistRelatedContent: sem continuação suportada pelo proxy.");
     return {'results': [], 'additionalParams': '&ctoken=null&continuation=null'};
   }
 
-  // Método com typo para compatibilidade com chamadas existentes na UI
   Future<Map<String, dynamic>> getArtistRealtedContent(
     dynamic browseEndpointOrArtistId,
     String tabName, {
@@ -405,88 +394,57 @@ class MusicServices extends getx.GetxService {
   }
 
   // ------------------------------------------------------------------
-  // 8. GET SEARCH CONTINUATION - não suportado pelo proxy atual
+  // 8. GET SEARCH CONTINUATION - não suportado
   // ------------------------------------------------------------------
   Future<Map<String, dynamic>> getSearchContinuation(
     Map<String, dynamic> continuationParams, {
     int limit = 10,
   }) async {
-    printINFO("⚠️ getSearchContinuation não suportado.");
     return {};
   }
 
   // ------------------------------------------------------------------
-  // 9. GET SONG YEAR - via search
+  // 9. GET SONG YEAR
   // ------------------------------------------------------------------
   Future<String> getSongYear(String songId) async {
     try {
-      final categorized = await search(songId, limit: 10);
-      final allItems = categorized.values.expand((v) => v).toList();
-      final match = allItems.firstWhere(
-        (item) => item['videoId'] == songId,
-        orElse: () => allItems.isNotEmpty ? allItems.first : {},
-      );
-      if (match['year'] != null) return match['year'].toString();
+      final video = await _yt.videos.get(songId);
+      if (video.uploadDate != null) return video.uploadDate!.year.toString();
     } catch (_) {}
     return DateTime.now().year.toString();
   }
 
   // ------------------------------------------------------------------
-  // 10. GET SONG WITH ID - devolve [bool, List<MediaItem>]
+  // 10. GET SONG WITH ID
   // ------------------------------------------------------------------
   Future<List> getSongWithId(String songId) async {
     try {
-      final categorized = await search(songId, limit: 10);
-      final allItems = categorized.values.expand((v) => v).toList();
-      final match = allItems.firstWhere(
-        (item) => item['videoId'] == songId,
-        orElse: () => {},
-      );
-      if (match.isNotEmpty && match['videoId'] != null) {
-        return [true, _toMediaItems([match])];
-      }
+      final video = await _yt.videos.get(songId);
+      return [true, _toMediaItems([_mapFromVideo(video)])];
     } catch (e) {
       printERROR("❌ Erro no getSongWithId: $e");
+      return [false, null];
     }
-    return [false, null];
   }
 
   // ------------------------------------------------------------------
-  // 11. GET LYRICS
+  // 11. GET LYRICS - sem fonte de letras fora do YT Music (limitação
+  //     conhecida, igual à Musify sem um provedor de letras dedicado)
   // ------------------------------------------------------------------
   Future<String> getLyrics(String browseId) async {
-    final data = await _get('/get_lyrics', {'browseId': browseId});
-    if (data == null) return '';
-    try {
-      return (data['lyrics'] as String?) ?? '';
-    } catch (e) {
-      printERROR("❌ Erro ao obter letras: $e");
-      return '';
-    }
+    return '';
   }
 
   // ------------------------------------------------------------------
-  // 12. GET CONTENT RELATED TO SONG (rádio a partir da música atual)
+  // 12. GET CONTENT RELATED TO SONG
   // ------------------------------------------------------------------
   Future<List<Map<String, dynamic>>> getContentRelatedToSong(
       String videoId, String hlCode) async {
-    final data = await _get('/get_watch_playlist', {
-      'videoId': videoId,
-      'radio': true,
-      'limit': 20,
-    });
-    if (data == null) return [];
     try {
-      final List rawTracks = (data['tracks'] as List?) ?? [];
-      return rawTracks
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .where((t) => t['videoId'] != videoId)
-          .map((t) {
-            t['thumbnails'] = _safeThumbnails(t['thumbnails']);
-            t['duration'] = _durationSeconds(t);
-            return t;
-          })
-          .toList();
+      final video = await _yt.videos.get(videoId);
+      final related = await _yt.videos.getRelatedVideos(video);
+      if (related == null) return [];
+      return related.map(_mapFromVideo).toList();
     } catch (e) {
       printERROR("❌ Erro no getContentRelatedToSong: $e");
       return [];
@@ -497,19 +455,42 @@ class MusicServices extends getx.GetxService {
   // 13. GET SEARCH SUGGESTIONS
   // ------------------------------------------------------------------
   Future<List<String>> getSearchSuggestion(String queryStr) async {
-    final data = await _get('/get_search_suggestions', {'q': queryStr});
-    if (data == null) return [];
     try {
-      return List<String>.from(data['suggestions'] ?? []);
+      final suggestions = await _yt.search.getQuerySuggestions(queryStr);
+      return List<String>.from(suggestions);
     } catch (e) {
-      printERROR("❌ Erro em getSearchSuggestion: $e");
+      printERROR("⚠️ getSearchSuggestion indisponível nesta versão: $e");
       return [];
     }
   }
 
   // ============================================================
-  //  HELPERS DE NORMALIZAÇÃO / CONVERSÃO
+  //  HELPERS DE CONVERSÃO
   // ============================================================
+
+  Map<String, dynamic> _mapFromVideo(yte.Video v) {
+    String? thumbUrl;
+    try {
+      thumbUrl = v.thumbnails.highResUrl;
+    } catch (_) {
+      thumbUrl = null;
+    }
+    return {
+      'videoId': v.id.value,
+      'title': v.title,
+      'artists': [
+        {'name': v.author, 'id': v.channelId.value}
+      ],
+      'album': null, // YouTube "normal" não tem conceito de álbum
+      'thumbnails': _safeThumbnails(thumbUrl == null ? null : [
+        {'url': thumbUrl}
+      ]),
+      'duration': v.duration?.inSeconds ?? 0,
+      'year': v.uploadDate?.year.toString() ?? '',
+      'playlistId': '',
+      'resultType': 'song',
+    };
+  }
 
   List<Map<String, dynamic>> _safeThumbnails(dynamic thumbnails) {
     if (thumbnails is List && thumbnails.isNotEmpty) {
@@ -522,45 +503,16 @@ class MusicServices extends getx.GetxService {
     ];
   }
 
-  int _durationSeconds(Map<String, dynamic> item) {
-    if (item['duration_seconds'] != null) {
-      return int.tryParse(item['duration_seconds'].toString()) ?? 0;
-    }
-    if (item['duration'] is int) return item['duration'] as int;
-    final durationStr = item['duration']?.toString();
-    if (durationStr == null || durationStr.isEmpty) return 0;
-    final parts = durationStr.split(':').map((p) => int.tryParse(p) ?? 0).toList();
-    if (parts.length == 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    if (parts.length == 2) return parts[0] * 60 + parts[1];
-    if (parts.length == 1) return parts[0];
-    return 0;
-  }
-
-  /// Garante que 'album' tenha a chave 'id' quando existir, pois
-  /// MediaItemBuilder só considera o álbum válido se `album['id'] != null`.
-  Map<String, dynamic>? _normalizedAlbum(dynamic album) {
-    if (album == null) return null;
-    if (album is Map) {
-      final map = Map<String, dynamic>.from(album);
-      map['id'] ??= map['browseId'] ?? map['playlistId'];
-      map['name'] ??= map['title'];
-      return map;
-    }
-    return null;
-  }
-
-  /// Converte uma lista de tracks (Map cru vindo do proxy) para
-  /// List<MediaItem>, que é o que player_controller.dart e os
-  /// controllers de Playlist/Album esperam em `content['tracks']`.
-  List<MediaItem> _toMediaItems(List rawTracks) {
+  /// Converte uma lista de tracks (Map cru) para List<MediaItem>, que é
+  /// o que player_controller.dart e os controllers de Playlist/Album
+  /// esperam em `content['tracks']`.
+  List<MediaItem> _toMediaItems(List<Map<String, dynamic>> rawTracks) {
     final result = <MediaItem>[];
-    for (final raw in rawTracks) {
+    for (final track in rawTracks) {
       try {
-        final track = Map<String, dynamic>.from(raw as Map);
-        if (track['videoId'] == null) continue;
-        track['thumbnails'] = _safeThumbnails(track['thumbnails']);
-        track['duration'] = _durationSeconds(track);
-        track['album'] = _normalizedAlbum(track['album']);
+        if (track['videoId'] == null || (track['videoId'] as String).isEmpty) {
+          continue;
+        }
         result.add(MediaItemBuilder.fromJson(track));
       } catch (e) {
         printERROR("❌ Erro ao converter track em MediaItem: $e");
