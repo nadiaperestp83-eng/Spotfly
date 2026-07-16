@@ -1,10 +1,9 @@
 <div align="center">
 
+UNDER DEVELOPMENT!
+
 # ❗**This is a hub app follow guidelines.**
 
-</div>
-
-<img src="https://github.com/anandnet/Harmony-Music/blob/main/cover.png" width="1200" >
 
 # Spotifly Music
 A cross platform app for music streaming made with Flutter .
