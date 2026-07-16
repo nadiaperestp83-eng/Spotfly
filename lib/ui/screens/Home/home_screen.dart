@@ -200,15 +200,11 @@ class Body extends StatelessWidget {
                         final items = homeScreenController
                                 .isContentFetched.value
                             ? [
-                                Obx(() {
-                                  final scrollController = ScrollController();
-                                  homeScreenController.contentScrollControllers
-                                      .add(scrollController);
-                                  return QuickPicksWidget(
-                                      content:
-                                          homeScreenController.quickPicks.value,
-                                      scrollController: scrollController);
-                                }),
+                                const HomeGreetingHeader(),
+                                const RecentPlayedRow(),
+                                Obx(() => RecommendedListWidget(
+                                    content:
+                                        homeScreenController.quickPicks.value)),
                                 ...getWidgetList(
                                     homeScreenController.middleContent,
                                     homeScreenController),
