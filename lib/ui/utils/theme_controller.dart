@@ -7,6 +7,19 @@ import 'package:hive/hive.dart';
 import 'package:palette_generator/palette_generator.dart';
 import '/utils/helper.dart';
 
+/// Cor de destaque única e consistente do app (estilo "Spotify Green").
+/// Troque por `Color(0xFF2D9CFF)` se preferir a variante "azul elétrico".
+const Color kAccentColor = Color(0xFF1DB954);
+
+/// Fundo profundo (grafite/preto) usado no tema premium — evita o efeito
+/// "lavado" do cinza-médio padrão do Material.
+const Color kDeepBackground = Color(0xFF0A0A0A);
+
+/// Superfície ligeiramente mais clara que o fundo, para cards, bottom
+/// sheets e a própria NavigationBar — cria profundidade sem virar um
+/// "bloco" visualmente destacado.
+const Color kSurfaceElevated = Color(0xFF181818);
+
 class ThemeController extends GetxController {
   final primaryColor = Colors.deepPurple[400].obs;
   final textColor = Colors.white24.obs;
@@ -182,61 +195,113 @@ class ThemeController extends GetxController {
       final baseTheme = ThemeData(
           useMaterial3: false,
           brightness: Brightness.dark,
-          canvasColor: Colors.black,
-          primaryColor: Colors.black,
+          scaffoldBackgroundColor: kDeepBackground,
+          canvasColor: kDeepBackground,
+          primaryColor: kDeepBackground,
           primaryColorDark: Colors.black,
-          primaryColorLight: Colors.grey[850],
-          colorScheme: ColorScheme.fromSwatch(
-              accentColor: Colors.grey[700], brightness: Brightness.dark),
+          primaryColorLight: kSurfaceElevated,
+          cardColor: kSurfaceElevated,
+          dialogBackgroundColor: kSurfaceElevated,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: kAccentColor,
+            brightness: Brightness.dark,
+            primary: kAccentColor,
+            secondary: kAccentColor,
+            surface: kSurfaceElevated,
+            surfaceTint: Colors.transparent,
+          ),
           progressIndicatorTheme: ProgressIndicatorThemeData(
-              color: Colors.grey[700], linearTrackColor: Colors.white),
+              color: kAccentColor, linearTrackColor: Colors.white24),
           textTheme: const TextTheme(
               titleLarge: TextStyle(
                 fontSize: 23,
                 fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
               titleMedium: TextStyle(
                 fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
-              titleSmall: TextStyle(),
+              titleSmall: TextStyle(color: Colors.white),
               labelMedium: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 23,
-              ),
-              labelSmall: TextStyle(
-                  fontSize: 15, letterSpacing: 0, fontWeight: FontWeight.bold),
-              bodyMedium: TextStyle(color: Colors.grey)),
-          navigationRailTheme: const NavigationRailThemeData(
-              backgroundColor: Colors.black,
-              selectedIconTheme: IconThemeData(
                 color: Colors.white,
               ),
-              unselectedIconTheme: IconThemeData(color: Colors.white38),
-              selectedLabelTextStyle: TextStyle(
+              labelSmall: TextStyle(
+                  fontSize: 15,
+                  letterSpacing: 0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white),
+              // Colors.grey puro tem baixo contraste sobre preto profundo;
+              // white70 mantém legibilidade "premium" em textos secundários.
+              bodyMedium: TextStyle(color: Colors.white70)),
+          navigationRailTheme: NavigationRailThemeData(
+              backgroundColor: kDeepBackground,
+              indicatorColor: kAccentColor.withOpacity(0.18),
+              indicatorShape: const StadiumBorder(),
+              selectedIconTheme: const IconThemeData(
+                color: kAccentColor,
+              ),
+              unselectedIconTheme: const IconThemeData(color: Colors.white38),
+              selectedLabelTextStyle: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 15),
-              unselectedLabelTextStyle: TextStyle(
+              unselectedLabelTextStyle: const TextStyle(
                   color: Colors.white38, fontWeight: FontWeight.bold)),
+          // NavigationBar (Material 3) usada como bottom navigation: fundo
+          // igual ao scaffold (sem "bloco" separado), indicador tipo pílula
+          // e cores de alto contraste no estilo Spotify.
+          navigationBarTheme: NavigationBarThemeData(
+            backgroundColor: kDeepBackground,
+            surfaceTintColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            elevation: 0,
+            height: 64,
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            indicatorColor: kAccentColor.withOpacity(0.16),
+            indicatorShape: const StadiumBorder(),
+            iconTheme: WidgetStateProperty.resolveWith((states) {
+              return IconThemeData(
+                size: 24,
+                color: states.contains(WidgetState.selected)
+                    ? kAccentColor
+                    : Colors.white60,
+              );
+            }),
+            labelTextStyle: WidgetStateProperty.resolveWith((states) {
+              return TextStyle(
+                fontSize: 12,
+                fontWeight: states.contains(WidgetState.selected)
+                    ? FontWeight.w700
+                    : FontWeight.w500,
+                color: states.contains(WidgetState.selected)
+                    ? kAccentColor
+                    : Colors.white60,
+              );
+            }),
+          ),
           bottomSheetTheme: const BottomSheetThemeData(
-              backgroundColor: Colors.black, modalBarrierColor: Colors.black),
+              backgroundColor: kSurfaceElevated,
+              modalBarrierColor: Colors.black54),
           sliderTheme: const SliderThemeData(
             //base bar color
-            inactiveTrackColor: Colors.white30,
+            inactiveTrackColor: Colors.white24,
             //buffered progress
-            activeTrackColor: Colors.white,
+            activeTrackColor: kAccentColor,
             //progress bar color
-            valueIndicatorColor: Colors.black38,
-            thumbColor: Colors.white,
+            valueIndicatorColor: kSurfaceElevated,
+            thumbColor: kAccentColor,
           ),
-          textSelectionTheme: TextSelectionThemeData(
-              cursorColor: Colors.grey[700],
-              selectionColor: Colors.grey[700],
-              selectionHandleColor: Colors.grey[700]),
+          textSelectionTheme: const TextSelectionThemeData(
+              cursorColor: kAccentColor,
+              selectionColor: kAccentColor,
+              selectionHandleColor: kAccentColor),
           inputDecorationTheme: const InputDecorationTheme(
-              focusColor: Colors.white,
+              focusColor: kAccentColor,
               focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white))));
+                  borderSide: BorderSide(color: kAccentColor))));
       return baseTheme.copyWith(
           textTheme: GoogleFonts.interTextTheme(baseTheme.textTheme));
     } else {
