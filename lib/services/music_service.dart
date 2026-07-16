@@ -235,10 +235,16 @@ class MusicServices extends getx.GetxService {
   //    personalizado (isso é exclusivo do YT Music). Como a Musify,
   //    montamos seções a partir de buscas por termos populares.
   // ------------------------------------------------------------------
+  /// Termos usados pra montar as seções da Home. Precisam ser
+  /// inequívocos ("música(s)" explícito na frase) — termos genéricos
+  /// tipo "lançamentos desta semana" atraem vídeos de streaming/cinema
+  /// (recaps, "o que estreia essa semana na Netflix" etc.), já que o
+  /// YouTube não distingue "lançamento" de música de lançamento de
+  /// filme/série sem esse contexto extra na busca.
   static const List<String> _homeSeedQueries = [
-    'top hits 2026',
-    'músicas mais tocadas',
-    'lançamentos desta semana',
+    'top músicas 2026',
+    'músicas mais tocadas 2026',
+    'lançamentos de músicas dessa semana',
   ];
 
   Future<List<Map<String, dynamic>>> getHome({int limit = 4}) async {
