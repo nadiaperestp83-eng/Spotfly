@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get/get.dart';
 
 import '../../../features/home/state/recently_played_notifier.dart';
+import '../../../models/playling_from.dart';
 import '../../player/player_controller.dart';
 
 /// Fileira "Recent played": até 2 cards grandes com as últimas músicas
@@ -59,7 +60,14 @@ class _RecentPlayedCard extends StatelessWidget {
       child: Material(
         color: cardColor,
         child: InkWell(
-          onTap: () => playerController.pushSongToQueue(song),
+          onTap: () => playerController.playPlayListSong(
+            [song],
+            0,
+            playfrom: PlaylingFrom(
+              type: PlaylingFromType.SELECTION,
+              name: "Recent played",
+            ),
+          ),
           child: Stack(
             fit: StackFit.expand,
             children: [
