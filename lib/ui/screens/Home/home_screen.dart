@@ -121,11 +121,15 @@ class Body extends StatelessWidget {
             : size.height < 750
                 ? 80.0
                 : 85.0;
-    final leftPadding =
-        settingsScreenController.isBottomNavBarEnabled.isTrue ? 20.0 : 5.0;
+    // Com o NavigationRail lateral permanentemente desativado em mobile,
+    // o conteÃēdo ocupa a largura total da tela; aplicamos um padding
+    // horizontal simÃŠtrico (em vez do antigo "only(left: ...)") para dar
+    // aquele respiro visual de app profissional em ambas as bordas.
+    final horizontalPadding =
+        settingsScreenController.isBottomNavBarEnabled.isTrue ? 16.0 : 5.0;
     if (homeScreenController.tabIndex.value == 0) {
       return Padding(
-        padding: EdgeInsets.only(left: leftPadding),
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
         child: Stack(
           children: [
             GestureDetector(
