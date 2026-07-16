@@ -127,7 +127,10 @@ void _setAppInitPrefs() {
   final appPrefs = Hive.box("AppPrefs");
   if (appPrefs.isEmpty) {
     appPrefs.putAll({
-      'themeModeType': 0,
+      // 2 = ThemeType.dark: usa o tema premium fixo (grafite profundo +
+      // accent verde) em vez do ThemeType.dynamic (index 0), que extrai
+      // cores pastéis da capa do álbum e deixa o app "lavado".
+      'themeModeType': 2,
       "cacheSongs": false,
       "skipSilenceEnabled": false,
       'streamingQuality': 1,
