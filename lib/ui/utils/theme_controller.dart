@@ -133,8 +133,14 @@ class ThemeController extends GetxController {
               backgroundColor: primarySwatch[600],
               modalBarrierColor: primarySwatch[400]),
           textTheme: TextTheme(
+            // fontSize maior + peso 800 + letterSpacing negativo: aproxima
+            // o header ("Boa noite") do tracking apertado e geométrico da
+            // Spotify Circular/Gotham.
             titleLarge: const TextStyle(
-                fontSize: 23, fontWeight: FontWeight.bold, color: Colors.white),
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.6,
+                color: Colors.white),
             titleMedium: const TextStyle(
                 fontWeight: FontWeight.bold, color: Colors.white),
             titleSmall: TextStyle(color: primarySwatch[100]),
@@ -180,7 +186,7 @@ class ThemeController extends GetxController {
           //scaffoldBackgroundColor: primarySwatch[700]
           );
       return baseTheme.copyWith(
-          textTheme: GoogleFonts.interTextTheme(baseTheme.textTheme));
+          textTheme: GoogleFonts.plusJakartaSansTextTheme(baseTheme.textTheme));
     } else if (themeType == ThemeType.dark) {
       SystemChrome.setSystemUIOverlayStyle(
         SystemUiOverlayStyle(
@@ -214,8 +220,9 @@ class ThemeController extends GetxController {
               color: kAccentColor, linearTrackColor: Colors.white24),
           textTheme: const TextTheme(
               titleLarge: TextStyle(
-                fontSize: 23,
-                fontWeight: FontWeight.bold,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.6,
                 color: Colors.white,
               ),
               titleMedium: TextStyle(
@@ -250,21 +257,25 @@ class ThemeController extends GetxController {
                   fontSize: 15),
               unselectedLabelTextStyle: const TextStyle(
                   color: Colors.white38, fontWeight: FontWeight.bold)),
-          // NavigationBar (Material 3) usada como bottom navigation: fundo
-          // igual ao scaffold (sem "bloco" separado), indicador tipo pílula
-          // e cores de alto contraste no estilo Spotify.
+          // NavigationBar (Material 3) usada dentro do wrapper flutuante e
+          // translúcido de bottom_nav_bar.dart. backgroundColor TRANSPARENT
+          // é essencial aqui: é o BackdropFilter + Container translúcido do
+          // widget que criam o efeito "vidro fosco" — se a NavigationBar
+          // tivesse cor sólida, o blur ficaria escondido atrás dela.
+          // Ícones (22) e labels (11) reduzidos e mais próximos = visual
+          // "refinado" em vez do NavigationBar padrão, que é maior/espaçado.
           navigationBarTheme: NavigationBarThemeData(
-            backgroundColor: kDeepBackground,
+            backgroundColor: Colors.transparent,
             surfaceTintColor: Colors.transparent,
             shadowColor: Colors.transparent,
             elevation: 0,
-            height: 64,
+            height: 52,
             labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            indicatorColor: kAccentColor.withOpacity(0.16),
+            indicatorColor: kAccentColor.withOpacity(0.22),
             indicatorShape: const StadiumBorder(),
             iconTheme: WidgetStateProperty.resolveWith((states) {
               return IconThemeData(
-                size: 24,
+                size: 22,
                 color: states.contains(WidgetState.selected)
                     ? kAccentColor
                     : Colors.white60,
@@ -272,7 +283,7 @@ class ThemeController extends GetxController {
             }),
             labelTextStyle: WidgetStateProperty.resolveWith((states) {
               return TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: states.contains(WidgetState.selected)
                     ? FontWeight.w700
                     : FontWeight.w500,
@@ -303,7 +314,7 @@ class ThemeController extends GetxController {
               focusedBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: kAccentColor))));
       return baseTheme.copyWith(
-          textTheme: GoogleFonts.interTextTheme(baseTheme.textTheme));
+          textTheme: GoogleFonts.plusJakartaSansTextTheme(baseTheme.textTheme));
     } else {
       SystemChrome.setSystemUIOverlayStyle(
         SystemUiOverlayStyle(
@@ -330,8 +341,9 @@ class ThemeController extends GetxController {
               linearTrackColor: Colors.grey[700], color: Colors.grey[400]),
           textTheme: TextTheme(
               titleLarge: const TextStyle(
-                fontSize: 23,
-                fontWeight: FontWeight.bold,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.6,
               ),
               titleMedium: const TextStyle(
                 fontWeight: FontWeight.bold,
@@ -376,7 +388,7 @@ class ThemeController extends GetxController {
               focusedBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: Colors.black))));
       return baseTheme.copyWith(
-          textTheme: GoogleFonts.interTextTheme(baseTheme.textTheme));
+          textTheme: GoogleFonts.plusJakartaSansTextTheme(baseTheme.textTheme));
     }
   }
 
