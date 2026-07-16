@@ -13,8 +13,12 @@ class ProxyConfig {
   /// e cair no fallback direto sem travar a UI).
   static const Duration proxyTimeout = Duration(seconds: 8);
 
-  /// Timeout usado na tentativa direta (fallback).
-  static const Duration directTimeout = Duration(seconds: 12);
+  /// Timeout usado na tentativa direta (fallback). Quando NÃO há proxy
+  /// configurado (caso comum), esta é a ÚNICA tentativa de rede — por
+  /// isso é mais generosa: getManifest() faz várias requisições
+  /// internas (player JS, decifragem de assinatura, etc.) que podem
+  /// legitimamente passar de 10s numa conexão móvel mais lenta.
+  static const Duration directTimeout = Duration(seconds: 20);
 
   /// true somente se [proxyAddress] foi de fato preenchido com um
   /// endereço real (não vazio e diferente do placeholder). Usado por
