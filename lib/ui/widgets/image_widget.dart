@@ -58,8 +58,11 @@ class ImageWidget extends StatelessWidget {
       width: size,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
+        // artist != null já usa BoxShape.circle (capa perfeitamente
+        // redonda) — nada a mudar aí. Para álbuns/playlists/músicas,
+        // Spotify usa cantos ~8dp (não o 5dp "Material padrão" genérico).
         shape: artist != null ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius: artist != null ? null : BorderRadius.circular(5),
+        borderRadius: artist != null ? null : BorderRadius.circular(8),
       ),
       child: offlineAvailable
           ? Image.file(
@@ -85,7 +88,7 @@ class ImageWidget extends StatelessWidget {
                       shape:
                           artist != null ? BoxShape.circle : BoxShape.rectangle,
                       borderRadius:
-                          artist != null ? null : BorderRadius.circular(10),
+                          artist != null ? null : BorderRadius.circular(8),
                     ),
                     child: Image.asset(
                         "assets/icons/${song != null ? "song" : artist != null ? "artist" : "album"}.png"));
@@ -100,7 +103,7 @@ class ImageWidget extends StatelessWidget {
                       shape:
                           artist != null ? BoxShape.circle : BoxShape.rectangle,
                       borderRadius:
-                          artist != null ? null : BorderRadius.circular(10),
+                          artist != null ? null : BorderRadius.circular(8),
                       color: Colors.white54,
                     ),
                   ))),
