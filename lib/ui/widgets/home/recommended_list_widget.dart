@@ -86,7 +86,14 @@ class RecommendedListWidget extends StatelessWidget {
                   icon: const Icon(Icons.more_vert),
                   onPressed: () => _showSongInfo(context, song),
                 ),
-                onTap: () => playerController.pushSongToQueue(song),
+                onTap: () => playerController.playPlayListSong(
+                  List<MediaItem>.from(content.songList),
+                  index,
+                  playfrom: PlaylingFrom(
+                    type: PlaylingFromType.SELECTION,
+                    name: content.title,
+                  ),
+                ),
                 onLongPress: () => _showSongInfo(context, song),
               );
             },
