@@ -204,7 +204,13 @@ class ListWidget extends StatelessWidget with RemoveSongFromPlaylistMixin {
           ? const BouncingScrollPhysics()
           : const NeverScrollableScrollPhysics(),
       itemBuilder: (context, index) => ListTile(
-        visualDensity: const VisualDensity(horizontal: -2, vertical: 2),
+        // visualDensity vertical em 0 (em vez de 2) + minVerticalPadding 8:
+        // com o VisualDensity positivo anterior, o ListTile "esticava" e o
+        // título/subtítulo ficavam desalinhados do centro do círculo de
+        // 90dp. Zerando a densidade vertical, o Flutter centraliza speed
+        // leading, title e subtitle na altura do tile automaticamente.
+        visualDensity: const VisualDensity(horizontal: -2, vertical: 0),
+        minVerticalPadding: 8,
         onTap: () {
           Get.toNamed(ScreenNavigationSetup.artistScreen,
               id: ScreenNavigationSetup.id, arguments: [false, artists[index]]);
@@ -217,7 +223,10 @@ class ListWidget extends StatelessWidget with RemoveSongFromPlaylistMixin {
         title: Text(
           artists[index].name,
           maxLines: 1,
-          style: Theme.of(context).textTheme.titleMedium,
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(fontWeight: FontWeight.w700),
         ),
         subtitle: Text(
           artists[index].subscribers,
