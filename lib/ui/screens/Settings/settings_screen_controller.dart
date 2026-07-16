@@ -88,8 +88,11 @@ class SettingsScreenController extends GetxController {
         : appLang == "zh_Hans"
             ? "zh-CN"
             : appLang;
-    isBottomNavBarEnabled.value =
-        isDesktop ? false : (setBox.get("isBottomNavBarEnabled") ?? false);
+    // Migração definitiva: em telas mobile o NavigationRail lateral fica
+    // permanentemente desativado e a BottomNavBar (Material 3) é forçada,
+    // independente do que estiver salvo no Hive de instalações antigas.
+    // No desktop o comportamento de side rail é mantido.
+    isBottomNavBarEnabled.value = !isDesktop;
     noOfHomeScreenContent.value = setBox.get("noOfHomeScreenContent") ?? 3;
     isTransitionAnimationDisabled.value =
         setBox.get("isTransitionAnimationDisabled") ?? false;
