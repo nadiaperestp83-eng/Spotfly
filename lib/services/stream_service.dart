@@ -16,11 +16,28 @@ class StreamProvider {
   /// quem já chama esse método, mas agora delega para o fallback automático.
   static Future<StreamProvider> fetch(String videoId) => fetchWithFallback(videoId);
 
-  /// Tenta buscar o manifesto via proxy; se falhar por motivo de rede
-  /// (SocketException, TimeoutException ou HTTP 403), tenta de novo
-  /// imediatamente com conexão direta. Só propaga erro pra UI se as
-  /// duas tentativas falharem.
+  /// Tenta buscar o manifesto via proxy (se houver um configurado); se
+  /// falhar por motivo de rede (SocketException, TimeoutException ou
+  /// HTTP 403), tenta de novo imediatamente com conexão direta. Só
+  /// propaga erro pra UI se as duas tentativas falharem.
+  ///
+  /// Sem proxy configurado (ProxyConfig.isConfigured == false), pula
+  /// direto pra UMA ÚNICA tentativa direta com o timeout mais longo —
+  /// evita gastar 8s à toa numa "tentativa de proxy" que na prática já
+  /// é idêntica à tentativa direta que viria a seguir.
   static Future<StreamProvider> fetchWithFallback(String videoId) async {
+    if (!ProxyConfig.isConfigured) {
+      final directYt = YtClientProvider.createDefaultClient();
+      final directAttempt = await _tryFetch(
+        directYt,
+        videoId,
+        timeout: ProxyConfig.directTimeout,
+      );
+      return directAttempt.result ??
+          directAttempt.errorResult ??
+          StreamProvider(playable: false, statusMSG: "networkError");
+    }
+
     // 1ª tentativa: via proxy
     final proxyYt = YtClientProvider.createProxyClient();
     final proxyAttempt = await _tryFetch(
