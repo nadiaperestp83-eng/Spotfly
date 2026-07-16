@@ -13,8 +13,10 @@ import '/ui/player/player_controller.dart';
 import '/ui/widgets/create_playlist_dialog.dart';
 import '../../navigator.dart';
 import '../../widgets/content_list_widget.dart';
-import '../../widgets/quickpickswidget.dart';
 import '../../widgets/shimmer_widgets/home_shimmer.dart';
+import '../../widgets/home/home_greeting_header.dart';
+import '../../widgets/home/recent_played_row.dart';
+import '../../widgets/home/recommended_list_widget.dart';
 import 'home_screen_controller.dart';
 import '../Settings/settings_screen.dart';
 
