@@ -139,9 +139,16 @@ class SongListTile extends StatelessWidget with RemoveSongFromPlaylistMixin {
                       ),
                     ),
                   )
-                : ImageWidget(
-                    size: 55,
-                    song: song,
+                : SizedBox(
+                    width: 50,
+                    height: 50,
+                    child: Center(
+                      child: ImageWidget(
+                        size: 50,
+                        song: song,
+                        forceCircle: true,
+                      ),
+                    ),
                   ),
             title: Marquee(
               delay: const Duration(milliseconds: 300),
