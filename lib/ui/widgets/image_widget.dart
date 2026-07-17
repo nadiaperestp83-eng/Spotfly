@@ -20,6 +20,7 @@ class ImageWidget extends StatelessWidget {
     this.artist,
     required this.size,
     this.isPlayerArtImage = false,
+    this.forceCircle = false,
   });
   final MediaItem? song;
   final Playlist? playlist;
@@ -27,6 +28,11 @@ class ImageWidget extends StatelessWidget {
   final bool isPlayerArtImage;
   final Artist? artist;
   final double size;
+
+  /// Quando true, força o formato circular mesmo para song/album/playlist
+  /// (que por padrão usam BorderRadius.circular(8)). Usado nas listas
+  /// de músicas que devem imitar o layout circular do Spotify.
+  final bool forceCircle;
 
   @override
   Widget build(BuildContext context) {
@@ -58,11 +64,14 @@ class ImageWidget extends StatelessWidget {
       width: size,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        // artist != null já usa BoxShape.circle (capa perfeitamente
-        // redonda) — nada a mudar aí. Para álbuns/playlists/músicas,
-        // Spotify usa cantos ~8dp (não o 5dp "Material padrão" genérico).
-        shape: artist != null ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius: artist != null ? null : BorderRadius.circular(8),
+        // artist != null OU forceCircle == true renderiza um círculo
+        // perfeito. Caso contrário, cantos ~8dp (padrão Spotify para
+        // álbuns/playlists/músicas).
+        shape: (artist != null || forceCircle)
+            ? BoxShape.circle
+            : BoxShape.rectangle,
+        borderRadius:
+            (artist != null || forceCircle) ? null : BorderRadius.circular(8),
       ),
       child: offlineAvailable
           ? Image.file(
@@ -85,10 +94,12 @@ class ImageWidget extends StatelessWidget {
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.secondary,
-                      shape:
-                          artist != null ? BoxShape.circle : BoxShape.rectangle,
-                      borderRadius:
-                          artist != null ? null : BorderRadius.circular(8),
+                      shape: (artist != null || forceCircle)
+                          ? BoxShape.circle
+                          : BoxShape.rectangle,
+                      borderRadius: (artist != null || forceCircle)
+                          ? null
+                          : BorderRadius.circular(8),
                     ),
                     child: Image.asset(
                         "assets/icons/${song != null ? "song" : artist != null ? "artist" : "album"}.png"));
@@ -100,10 +111,12 @@ class ImageWidget extends StatelessWidget {
                   direction: ShimmerDirection.ltr,
                   child: Container(
                     decoration: BoxDecoration(
-                      shape:
-                          artist != null ? BoxShape.circle : BoxShape.rectangle,
-                      borderRadius:
-                          artist != null ? null : BorderRadius.circular(8),
+                      shape: (artist != null || forceCircle)
+                          ? BoxShape.circle
+                          : BoxShape.rectangle,
+                      borderRadius: (artist != null || forceCircle)
+                          ? null
+                          : BorderRadius.circular(8),
                       color: Colors.white54,
                     ),
                   ))),
