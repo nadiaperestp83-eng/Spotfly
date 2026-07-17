@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:get/get.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:widget_marquee/widget_marquee.dart';
 
 import '../../models/playlist.dart';
@@ -108,7 +109,9 @@ class SongListTile extends StatelessWidget with RemoveSongFromPlaylistMixin {
               //label: 'Play Next',
             ),
           ]),
-          child: ListTile(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: ListTile(
             onTap: onTap,
             onLongPress: () async {
               showModalBottomSheet(
@@ -159,13 +162,21 @@ class SongListTile extends StatelessWidget with RemoveSongFromPlaylistMixin {
                     ? song.title.substring(0, 50)
                     : song.title,
                 maxLines: 1,
-                style: Theme.of(context).textTheme.titleMedium,
+                style: GoogleFonts.dmSans(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  fontSize: Theme.of(context).textTheme.titleMedium?.fontSize,
+                ),
               ),
             ),
             subtitle: Text(
               "${song.artist}",
               maxLines: 1,
-              style: Theme.of(context).textTheme.titleSmall,
+              style: GoogleFonts.dmSans(
+                fontWeight: FontWeight.w400,
+                color: const Color(0xFFB3B3B3),
+                fontSize: Theme.of(context).textTheme.titleSmall?.fontSize,
+              ),
             ),
             trailing: SizedBox(
               width: Get.size.width > 800 ? 80 : 40,
@@ -215,6 +226,6 @@ class SongListTile extends StatelessWidget with RemoveSongFromPlaylistMixin {
               ),
             ),
           ),
-        ));
+        )));
   }
 }
