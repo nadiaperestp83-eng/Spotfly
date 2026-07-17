@@ -3,11 +3,11 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:harmonymusic/ui/screens/Home/home_screen_controller.dart';
+import 'package:harmonymusic/ui/utils/theme_controller.dart' show kAccentColor;
 
 /// Altura da pílula em si (sem margens/safe-area). Mantida em constante
-/// para reaproveitar em `NavigationBarThemeData.height` (theme_controller.dart)
-/// e em `ScrollToHideWidget` (home.dart), evitando números "mágicos"
-/// duplicados em vários arquivos.
+/// para reaproveitar em `ScrollToHideWidget` (home.dart), evitando números
+/// "mágicos" duplicados em vários arquivos.
 const double kFloatingNavBarHeight = 52.0;
 const double kFloatingNavBarHorizontalMargin = 16.0;
 const double kFloatingNavBarTopMargin = 8.0;
@@ -23,13 +23,47 @@ const double kFloatingNavBarBottomMargin = 8.0;
 ///    ClipRRect o blur vazaria como um retângulo.
 /// 3. `BackdropFilter(ImageFilter.blur(...))` borra tudo que está
 ///    renderizado ATRÁS deste widget (a lista de conteúdo rolando por
-///    baixo), efeito que só existe porque a NavigationBar em si é
-///    transparente (ver `navigationBarTheme` em theme_controller.dart).
+///    baixo).
 /// 4. O `Container` com `Colors.white.withOpacity(0.06)` + borda sutil
 ///    é o "vidro": uma cor quase transparente sobre o blur para dar
 ///    profundidade sem virar um bloco opaco.
+///
+/// IMPORTANTE — por que não usamos mais o widget `NavigationBar` do
+/// Material 3 aqui: o `NavigationBar` do Flutter tem uma altura mínima
+/// intrínseca pensada para 80dp (ícone + indicador em pílula + label).
+/// Quando forçamos `height: 52` (via tema) para caber na barra flutuante,
+/// o indicador (StadiumBorder) mantém o padding interno calculado pra
+/// 80dp e passa a ficar cortado/desalinhado — os ícones "saem" da
+/// pílula de destaque. Em vez de lutar contra esse comportamento interno,
+/// construímos a barra manualmente com um `Row` de itens: temos controle
+/// total do alinhamento vertical e, de brinde, o resultado fica mais fiel
+/// ao Spotify real, que não usa uma pílula de fundo no item selecionado —
+/// só muda a cor do ícone/label.
 class BottomNavBar extends StatelessWidget {
   const BottomNavBar({super.key});
+
+  static const List<_NavItem> _items = [
+    _NavItem(
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home_rounded,
+      labelKey: 'home',
+    ),
+    _NavItem(
+      icon: Icons.search_outlined,
+      selectedIcon: Icons.search_rounded,
+      labelKey: 'search',
+    ),
+    _NavItem(
+      icon: Icons.library_music_outlined,
+      selectedIcon: Icons.library_music_rounded,
+      labelKey: 'library',
+    ),
+    _NavItem(
+      icon: Icons.settings_outlined,
+      selectedIcon: Icons.settings_rounded,
+      labelKey: 'settings',
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -59,46 +93,77 @@ class BottomNavBar extends StatelessWidget {
                 width: 0.6,
               ),
             ),
-            // clipBehavior garante que o indicador em pílula do
-            // NavigationBar não vaze para fora dos cantos arredondados.
             clipBehavior: Clip.antiAlias,
-            child: Obx(() => NavigationBar(
-                  onDestinationSelected:
-                      homeScreenController.onBottonBarTabSelected,
-                  selectedIndex: homeScreenController.tabIndex.toInt(),
-                  destinations: [
-                    NavigationDestination(
-                      icon: const Icon(Icons.home_outlined),
-                      selectedIcon: const Icon(Icons.home_rounded),
-                      label: modifyNgetlabel('home'.tr),
+            child: Obx(() {
+              final selectedIndex = homeScreenController.tabIndex.toInt();
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: List.generate(_items.length, (index) {
+                  final item = _items[index];
+                  final selected = index == selectedIndex;
+                  return Expanded(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () =>
+                            homeScreenController.onBottonBarTabSelected(index),
+                        child: SizedBox(
+                          height: kFloatingNavBarHeight,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                selected ? item.selectedIcon : item.icon,
+                                size: 22,
+                                color:
+                                    selected ? kAccentColor : Colors.white60,
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                modifyNgetlabel(item.labelKey.tr),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: selected
+                                      ? kAccentColor
+                                      : Colors.white60,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                    NavigationDestination(
-                      icon: const Icon(Icons.search_outlined),
-                      selectedIcon: const Icon(Icons.search_rounded),
-                      label: modifyNgetlabel('search'.tr),
-                    ),
-                    NavigationDestination(
-                      icon: const Icon(Icons.library_music_outlined),
-                      selectedIcon: const Icon(Icons.library_music_rounded),
-                      label: modifyNgetlabel('library'.tr),
-                    ),
-                    NavigationDestination(
-                      icon: const Icon(Icons.settings_outlined),
-                      selectedIcon: const Icon(Icons.settings_rounded),
-                      label: modifyNgetlabel('settings'.tr),
-                    ),
-                  ],
-                )),
+                  );
+                }),
+              );
+            }),
           ),
         ),
       ),
     );
   }
 
-  String modifyNgetlabel(String label) {
+  static String modifyNgetlabel(String label) {
     if (label.length > 9) {
       return "${label.substring(0, 8)}..";
     }
     return label;
   }
+}
+
+class _NavItem {
+  const _NavItem({
+    required this.icon,
+    required this.selectedIcon,
+    required this.labelKey,
+  });
+  final IconData icon;
+  final IconData selectedIcon;
+  final String labelKey;
 }
