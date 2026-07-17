@@ -50,37 +50,83 @@ class HomeScreenController extends GetxController {
   /// 2. Usa a música mais recente como "semente" pra API de relacionados.
   /// 3. Filtra fora qualquer música que já esteja no próprio histórico,
   ///    pra não recomendar o que o usuário acabou de ouvir.
+  ///
+  /// "Fixa" (não deve desaparecer a cada abertura do app):
+  /// - Ao iniciar, primeiro mostra o que foi salvo em cache na última vez
+  ///   que a busca deu certo (Hive "AppPrefs" -> "recommendedForYouCache"),
+  ///   então atualiza em segundo plano.
+  /// - Se a chamada de rede falhar ou vier vazia, o cache anterior é
+  ///   mantido na tela (nunca sobrescreve com uma lista vazia).
+  /// - Se não houver cache nenhum (primeiro uso) e a rede falhar, cai de
+  ///   volta pro próprio histórico local como recomendação, pra sempre
+  ///   ter algo pra mostrar quando já existe alguma música tocada.
   Future<void> loadRecommendedForYou() async {
+    final appPrefs = Hive.isBoxOpen("AppPrefs")
+        ? Hive.box("AppPrefs")
+        : await Hive.openBox("AppPrefs");
+
+    // 1) Mostra imediatamente o último resultado salvo, sem esperar rede.
+    final cached = appPrefs.get("recommendedForYouCache") as List?;
+    if (cached != null && cached.isNotEmpty) {
+      try {
+        final cachedItems = cached
+            .map((e) => MediaItemBuilder.fromJson(Map.from(e as Map)))
+            .toList();
+        recommendedForYou.value =
+            QuickPicks(cachedItems, title: "recommendedForYou".tr);
+      } catch (_) {}
+    }
+
     try {
       isRecommendedForYouLoading.value = true;
-      final box =
-          Hive.isBoxOpen("LIBRP") ? Hive.box("LIBRP") : await Hive.openBox("LIBRP");
-      if (box.isEmpty) {
-        recommendedForYou.value = QuickPicks([]);
-        return;
-      }
+      final box = Hive.isBoxOpen("LIBRP")
+          ? Hive.box("LIBRP")
+          : await Hive.openBox("LIBRP");
+      if (box.isEmpty) return; // nunca tocou nada ainda: nada a recomendar
 
-      final historyValues = box.values.map((e) => Map.from(e as Map)).toList();
+      final historyValues = box.values
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
       final seedSongId = historyValues.last['videoId'] as String?;
       if (seedSongId == null) return;
 
-      final related = await _musicServices.getContentRelatedToSong(
-          seedSongId, getContentHlCode());
-      if (related.isEmpty) return;
-
       final historyIds = historyValues.map((e) => e['videoId']).toSet();
-      final mediaItems = related
-          .where((track) =>
-              track['videoId'] != null &&
-              !historyIds.contains(track['videoId']))
+      List<Map<String, dynamic>> freshTracks = [];
+
+      try {
+        final related = await _musicServices.getContentRelatedToSong(
+            seedSongId, getContentHlCode());
+        freshTracks = related
+            .where((track) =>
+                track['videoId'] != null &&
+                !historyIds.contains(track['videoId']))
+            .take(10)
+            .toList();
+      } catch (e) {
+        printERROR("getContentRelatedToSong falhou: $e");
+      }
+
+      // 2) API não trouxe nada novo (offline, erro, ou tudo já visto):
+      //    cai pro próprio histórico local em vez de deixar a seção vazia.
+      if (freshTracks.isEmpty) {
+        if (recommendedForYou.value.songList.isNotEmpty) {
+          return; // já tem cache/valor na tela, não sobrescreve com vazio
+        }
+        freshTracks = historyValues.reversed
+            .where((track) => track['videoId'] != seedSongId)
+            .take(10)
+            .toList();
+      }
+
+      if (freshTracks.isEmpty) return;
+
+      final mediaItems = freshTracks
           .map((track) => MediaItemBuilder.fromJson(track))
-          .take(10)
           .toList();
 
-      if (mediaItems.isNotEmpty) {
-        recommendedForYou.value =
-            QuickPicks(mediaItems, title: "recommendedForYou".tr);
-      }
+      recommendedForYou.value =
+          QuickPicks(mediaItems, title: "recommendedForYou".tr);
+      await appPrefs.put("recommendedForYouCache", freshTracks);
     } catch (e) {
       printERROR("Recommended for you not loaded due to: $e");
     } finally {
