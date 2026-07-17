@@ -24,6 +24,13 @@ class HomeScreenController extends GetxController {
   final quickPicks = QuickPicks([]).obs;
   final middleContent = [].obs;
   final fixedContent = [].obs;
+
+  /// "Recommended for you": semente = música mais recente do histórico
+  /// local (Hive box "LIBRP", já mantida por PlayerController._addToRP),
+  /// relacionados buscados via API (getContentRelatedToSong). Não duplica
+  /// nenhuma fonte de dados nova — só combina as duas que já existem.
+  final recommendedForYou = QuickPicks([]).obs;
+  final isRecommendedForYouLoading = false.obs;
   final showVersionDialog = true.obs;
   //isHomeScreenOnTop var only useful if bottom nav enabled
   final isHomeSreenOnTop = true.obs;
@@ -34,7 +41,51 @@ class HomeScreenController extends GetxController {
   onInit() {
     super.onInit();
     loadContent();
+    loadRecommendedForYou();
     if (updateCheckFlag) _checkNewVersion();
+  }
+
+  /// Monta a seção "Recommended for you" a partir do histórico local:
+  /// 1. Lê a Hive box "LIBRP" (sem duplicatas, mais recente por último).
+  /// 2. Usa a música mais recente como "semente" pra API de relacionados.
+  /// 3. Filtra fora qualquer música que já esteja no próprio histórico,
+  ///    pra não recomendar o que o usuário acabou de ouvir.
+  Future<void> loadRecommendedForYou() async {
+    try {
+      isRecommendedForYouLoading.value = true;
+      final box =
+          Hive.isBoxOpen("LIBRP") ? Hive.box("LIBRP") : await Hive.openBox("LIBRP");
+      if (box.isEmpty) {
+        recommendedForYou.value = QuickPicks([]);
+        return;
+      }
+
+      final historyValues = box.values.map((e) => Map.from(e as Map)).toList();
+      final seedSongId = historyValues.last['videoId'] as String?;
+      if (seedSongId == null) return;
+
+      final related = await _musicServices.getContentRelatedToSong(
+          seedSongId, getContentHlCode());
+      if (related.isEmpty) return;
+
+      final historyIds = historyValues.map((e) => e['videoId']).toSet();
+      final mediaItems = related
+          .where((track) =>
+              track['videoId'] != null &&
+              !historyIds.contains(track['videoId']))
+          .map((track) => MediaItemBuilder.fromJson(track))
+          .take(10)
+          .toList();
+
+      if (mediaItems.isNotEmpty) {
+        recommendedForYou.value =
+            QuickPicks(mediaItems, title: "recommendedForYou".tr);
+      }
+    } catch (e) {
+      printERROR("Recommended for you not loaded due to: $e");
+    } finally {
+      isRecommendedForYouLoading.value = false;
+    }
   }
 
   Future<void> loadContent() async {
