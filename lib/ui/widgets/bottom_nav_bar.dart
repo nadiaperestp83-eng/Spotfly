@@ -82,11 +82,11 @@ class BottomNavBar extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(30),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             height: kFloatingNavBarHeight,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
+              color: const Color(0xFF121212).withOpacity(0.85),
               borderRadius: BorderRadius.circular(30),
               border: Border.all(
                 color: Colors.white.withOpacity(0.10),
@@ -97,7 +97,7 @@ class BottomNavBar extends StatelessWidget {
             child: Obx(() {
               final selectedIndex = homeScreenController.tabIndex.toInt();
               return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: List.generate(_items.length, (index) {
                   final item = _items[index];
                   final selected = index == selectedIndex;
