@@ -13,6 +13,7 @@ import '/models/album.dart';
 import '/models/playlist.dart';
 import '/models/quick_picks.dart';
 import '/services/music_service.dart';
+import '../../../features/search/data/sources/jamendo_source.dart';
 import '../Settings/settings_screen_controller.dart';
 import '/ui/widgets/new_version_dialog.dart';
 
@@ -31,6 +32,16 @@ class HomeScreenController extends GetxController {
   /// nenhuma fonte de dados nova — só combina as duas que já existem.
   final recommendedForYou = QuickPicks([]).obs;
   final isRecommendedForYouLoading = false.obs;
+
+  /// "Estações de Rádio Popular": seção ISOLADA, não passa pelo
+  /// Orquestrador (musicSourcesProvider/searchCoordinatorProvider) — o
+  /// Jamendo foi removido de propósito de lá (ver comentário em
+  /// providers.dart) e essa decisão continua valendo para busca/fallback
+  /// normal. Aqui é uma chamada direta e exclusiva ao JamendoSource, só
+  /// pra essa seção da Home, usando o client_id que já está configurado
+  /// via --dart-define=JAMENDO_CLIENT_ID (ver .github/workflows).
+  final popularRadioStations = <MediaItem>[].obs;
+  final isPopularRadioStationsLoading = false.obs;
   final showVersionDialog = true.obs;
   //isHomeScreenOnTop var only useful if bottom nav enabled
   final isHomeSreenOnTop = true.obs;
@@ -42,6 +53,7 @@ class HomeScreenController extends GetxController {
     super.onInit();
     loadContent();
     loadRecommendedForYou();
+    loadPopularRadioStations();
     if (updateCheckFlag) _checkNewVersion();
   }
 
@@ -131,6 +143,28 @@ class HomeScreenController extends GetxController {
       printERROR("Recommended for you not loaded due to: $e");
     } finally {
       isRecommendedForYouLoading.value = false;
+    }
+  }
+
+  /// Busca só no Jamendo (order: popularity_month = "mais tocadas"),
+  /// direto, sem passar pelo orquestrador YT->Piped->Jamendo — decisão
+  /// explícita do usuário de manter essa seção isolada. Se JAMENDO_CLIENT_ID
+  /// não estiver configurado no build (--dart-define), getHomeContent()
+  /// já devolve lista vazia sozinho, então a seção simplesmente não aparece.
+  Future<void> loadPopularRadioStations() async {
+    try {
+      isPopularRadioStationsLoading.value = true;
+      final jamendoSource = JamendoSource(
+        clientId: const String.fromEnvironment('JAMENDO_CLIENT_ID'),
+      );
+      final result = await jamendoSource.getHomeContent();
+      if (result.isEmpty) return;
+      final contents = (result.first['contents'] as List).cast<MediaItem>();
+      popularRadioStations.value = contents;
+    } catch (e) {
+      printERROR("Popular radio stations (Jamendo) not loaded due to: $e");
+    } finally {
+      isPopularRadioStationsLoading.value = false;
     }
   }
 
