@@ -186,7 +186,7 @@ class ThemeController extends GetxController {
           //scaffoldBackgroundColor: primarySwatch[700]
           );
       return baseTheme.copyWith(
-          textTheme: GoogleFonts.plusJakartaSansTextTheme(baseTheme.textTheme));
+          textTheme: GoogleFonts.robotoTextTheme(baseTheme.textTheme));
     } else if (themeType == ThemeType.dark) {
       SystemChrome.setSystemUIOverlayStyle(
         SystemUiOverlayStyle(
@@ -314,7 +314,7 @@ class ThemeController extends GetxController {
               focusedBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: kAccentColor))));
       return baseTheme.copyWith(
-          textTheme: GoogleFonts.plusJakartaSansTextTheme(baseTheme.textTheme));
+          textTheme: GoogleFonts.robotoTextTheme(baseTheme.textTheme));
     } else {
       SystemChrome.setSystemUIOverlayStyle(
         SystemUiOverlayStyle(
@@ -388,7 +388,7 @@ class ThemeController extends GetxController {
               focusedBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: Colors.black))));
       return baseTheme.copyWith(
-          textTheme: GoogleFonts.plusJakartaSansTextTheme(baseTheme.textTheme));
+          textTheme: GoogleFonts.robotoTextTheme(baseTheme.textTheme));
     }
   }
 
