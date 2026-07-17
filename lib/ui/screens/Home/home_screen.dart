@@ -16,6 +16,7 @@ import '../../widgets/content_list_widget.dart';
 import '../../widgets/shimmer_widgets/home_shimmer.dart';
 import '../../widgets/home/home_greeting_header.dart';
 import '../../widgets/home/recent_played_row.dart';
+import '../../widgets/home/recommended_for_you_widget.dart';
 import '../../widgets/home/recommended_list_widget.dart';
 import 'home_screen_controller.dart';
 import '../Settings/settings_screen.dart';
@@ -206,6 +207,11 @@ class Body extends StatelessWidget {
                             ? [
                                 const HomeGreetingHeader(),
                                 const RecentPlayedRow(),
+                                Obx(() => RecommendedForYouWidget(
+                                    content:
+                                        homeScreenController.recommendedForYou.value,
+                                    isLoading: homeScreenController
+                                        .isRecommendedForYouLoading.value)),
                                 Obx(() => RecommendedListWidget(
                                     content:
                                         homeScreenController.quickPicks.value)),
