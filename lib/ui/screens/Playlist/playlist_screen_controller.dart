@@ -568,7 +568,7 @@ class PlaylistScreenController extends PlaylistAlbumScreenControllerBase
   // Helper method to get the appropriate export directory for each platform
   Future<Directory> _getExportDirectory() async {
     Directory directory;
-    const appFolderName = "HarmonyMusic";
+    const appFolderName = "Spotifly";
 
     try {
       if (Platform.isAndroid) {
@@ -610,11 +610,11 @@ class PlaylistScreenController extends PlaylistAlbumScreenControllerBase
   // Helper method to get a user-friendly location message
   String _getLocationMessage(String path) {
     if (Platform.isAndroid) {
-      return "Downloads/HarmonyMusic";
+      return "Downloads/Spotifly";
     } else if (Platform.isIOS) {
-      return "Files App > HarmonyMusic";
+      return "Files App > Spotifly";
     } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      return "Downloads/HarmonyMusic";
+      return "Downloads/Spotifly";
     } else {
       return path.split('/').last;
     }
