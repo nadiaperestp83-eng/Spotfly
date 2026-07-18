@@ -16,6 +16,7 @@ import '../../widgets/content_list_widget.dart';
 import '../../widgets/shimmer_widgets/home_shimmer.dart';
 import '../../widgets/home/home_greeting_header.dart';
 import '../../widgets/home/recent_played_row.dart';
+import '../../widgets/home/audio_narrative_widget.dart';
 import '../../widgets/home/popular_radio_stations_widget.dart';
 import '../../widgets/home/recommended_for_you_widget.dart';
 import '../../widgets/home/recommended_list_widget.dart';
@@ -213,6 +214,39 @@ class Body extends StatelessWidget {
                                         homeScreenController.recommendedForYou.value,
                                     isLoading: homeScreenController
                                         .isRecommendedForYouLoading.value)),
+                                Obx(() => AudioNarrativeWidget(
+                                    sectionTitle: "reflectionMinutes".tr,
+                                    items: homeScreenController
+                                        .reflectionMinutes.value,
+                                    isLoading: homeScreenController
+                                        .isReflectionMinutesLoading.value,
+                                    icon: Icons.self_improvement,
+                                    gradientColors: const [
+                                      Color(0xFF4E54C8),
+                                      Color(0xFF8F94FB),
+                                    ])),
+                                Obx(() => AudioNarrativeWidget(
+                                    sectionTitle: "nightTales".tr,
+                                    items:
+                                        homeScreenController.nightTales.value,
+                                    isLoading: homeScreenController
+                                        .isNightTalesLoading.value,
+                                    icon: Icons.auto_stories,
+                                    gradientColors: const [
+                                      Color(0xFF232526),
+                                      Color(0xFF414345),
+                                    ])),
+                                Obx(() => AudioNarrativeWidget(
+                                    sectionTitle: "soundPoetry".tr,
+                                    items: homeScreenController
+                                        .soundPoetry.value,
+                                    isLoading: homeScreenController
+                                        .isSoundPoetryLoading.value,
+                                    icon: Icons.menu_book,
+                                    gradientColors: const [
+                                      Color(0xFFB24592),
+                                      Color(0xFFF15F79),
+                                    ])),
                                 Obx(() => PopularRadioStationsWidget(
                                     stations: homeScreenController
                                         .popularRadioStations.value,
