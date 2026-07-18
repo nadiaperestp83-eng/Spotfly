@@ -73,8 +73,8 @@ class InternetArchiveSource implements IMusicSource {
     required String query,
     required int minSeconds,
     required int maxSeconds,
-    int candidateRows = 40,
-    int resultLimit = 12,
+    int candidateRows = 20,
+    int resultLimit = 10,
   }) async {
     final results = <Track>[];
 
@@ -87,7 +87,7 @@ class InternetArchiveSource implements IMusicSource {
     });
 
     final searchResponse =
-        await http.get(searchUri).timeout(const Duration(seconds: 12));
+        await http.get(searchUri).timeout(const Duration(seconds: 8));
     if (searchResponse.statusCode != 200) return results;
 
     final searchBody = jsonDecode(searchResponse.body) as Map<String, dynamic>;
@@ -95,7 +95,7 @@ class InternetArchiveSource implements IMusicSource {
         (searchBody['response']?['docs'] as List<dynamic>? ?? const []);
     if (docs.isEmpty) return results;
 
-    const batchSize = 6;
+    const batchSize = 5;
     for (var i = 0; i < docs.length && results.length < resultLimit; i += batchSize) {
       final batch = docs.skip(i).take(batchSize).toList();
       final batchTracks = await Future.wait(batch.map((doc) => _tryBuildTrack(
@@ -123,7 +123,7 @@ class InternetArchiveSource implements IMusicSource {
     try {
       final metadataUri = Uri.parse('https://archive.org/metadata/$identifier');
       final response =
-          await http.get(metadataUri).timeout(const Duration(seconds: 10));
+          await http.get(metadataUri).timeout(const Duration(seconds: 6));
       if (response.statusCode != 200) return null;
 
       final body = jsonDecode(response.body) as Map<String, dynamic>;
