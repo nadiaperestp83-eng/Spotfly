@@ -67,11 +67,11 @@ class HomeScreenController extends GetxController {
       'language:(por OR Portuguese OR "Português" OR pt)';
 
   final reflectionMinutes = <MediaItem>[].obs;
-  final isReflectionMinutesLoading = false.obs;
+  final isReflectionMinutesLoading = true.obs;
   final nightTales = <MediaItem>[].obs;
-  final isNightTalesLoading = false.obs;
+  final isNightTalesLoading = true.obs;
   final soundPoetry = <MediaItem>[].obs;
-  final isSoundPoetryLoading = false.obs;
+  final isSoundPoetryLoading = true.obs;
 
   final showVersionDialog = true.obs;
   //isHomeScreenOnTop var only useful if bottom nav enabled
@@ -79,23 +79,40 @@ class HomeScreenController extends GetxController {
   final List<ScrollController> contentScrollControllers = [];
   bool reverseAnimationtransiton = false;
 
+  bool _narrativeSectionsStarted = false;
+
   @override
   onInit() {
     super.onInit();
-    loadContent().then((_) {
-      // As 3 seções narrativas (Internet Archive) SÓ começam depois que
-      // o carregamento principal da Home (YouTube/quickPicks) termina
-      // — nunca em paralelo com ele. Eram várias requisições de rede
-      // simultâneas disputando banda/conexões numa conexão móvel fraca,
-      // o que podia derrubar/atrasar o loadContentFromNetwork() a
-      // ponto de vir vazio (ou nunca marcar isContentFetched = true,
-      // prendendo o shimmer na tela pra sempre). loadContent() em si
-      // não foi alterado.
-      _loadNarrativeSectionsSequentially();
-    });
+    loadContent();
     loadRecommendedForYou();
     loadPopularRadioStations();
+
+    // IMPORTANTE: loadContent() NÃO pode ser usado como sinal de "Home
+    // principal pronta" — dentro dele, loadContentFromNetwork() é
+    // disparado SEM `await` nas 3 ramificações (fire-and-forget), então
+    // o Future de loadContent() resolve quase na hora, bem antes dos
+    // dados do YouTube chegarem de verdade. Foi por isso que o
+    // `.then()` usado antes não resolvia a disputa de rede: as seções
+    // narrativas ainda começavam cedo demais.
+    //
+    // O sinal de verdade é isContentFetched virando `true` (só isso
+    // indica que quickPicks/middleContent/fixedContent já têm dados).
+    // `once` garante que isso dispare só 1 vez. Um fallback de 15s
+    // garante que as seções narrativas apareçam mesmo se a Home
+    // principal falhar (ex.: YouTube fora do ar, mas Internet Archive
+    // ok) — sem essa rede de segurança, elas ficariam esperando pra
+    // sempre.
+    once(isContentFetched, (_) => _startNarrativeSectionsOnce());
+    Future.delayed(const Duration(seconds: 15), _startNarrativeSectionsOnce);
+
     if (updateCheckFlag) _checkNewVersion();
+  }
+
+  void _startNarrativeSectionsOnce() {
+    if (_narrativeSectionsStarted) return;
+    _narrativeSectionsStarted = true;
+    _loadNarrativeSectionsSequentially();
   }
 
   /// Carrega as 3 seções narrativas uma de cada vez (não em paralelo
@@ -245,7 +262,7 @@ class HomeScreenController extends GetxController {
             maxSeconds: _reflectionMaxSeconds,
             resultLimit: 10,
           )
-          .timeout(const Duration(seconds: 30), onTimeout: () => const []);
+          .timeout(const Duration(seconds: 15), onTimeout: () => const []);
       if (tracks.isEmpty) return; // mantém cache/valor atual na tela
       reflectionMinutes.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
       await appPrefs.put(
@@ -282,7 +299,7 @@ class HomeScreenController extends GetxController {
             maxSeconds: _nightTalesMaxSeconds,
             resultLimit: 10,
           )
-          .timeout(const Duration(seconds: 30), onTimeout: () => const []);
+          .timeout(const Duration(seconds: 15), onTimeout: () => const []);
       if (tracks.isEmpty) return;
       nightTales.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
       await appPrefs.put(
@@ -319,7 +336,7 @@ class HomeScreenController extends GetxController {
             maxSeconds: _soundPoetryMaxSeconds,
             resultLimit: 10,
           )
-          .timeout(const Duration(seconds: 30), onTimeout: () => const []);
+          .timeout(const Duration(seconds: 15), onTimeout: () => const []);
       if (tracks.isEmpty) return;
       soundPoetry.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
       await appPrefs.put(
