@@ -221,13 +221,15 @@ class HomeScreenController extends GetxController {
     try {
       isReflectionMinutesLoading.value = reflectionMinutes.isEmpty;
       final source = InternetArchiveSource();
-      final tracks = await source.searchNarratedAudio(
-        query:
-            'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(reflexão) OR subject:(reflexao) OR title:(poema) OR title:(reflexão) OR title:(reflexao) OR title:(pensamento))',
-        minSeconds: _reflectionMinSeconds,
-        maxSeconds: _reflectionMaxSeconds,
-        resultLimit: 12,
-      );
+      final tracks = await source
+          .searchNarratedAudio(
+            query:
+                'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(reflexão) OR subject:(reflexao) OR title:(poema) OR title:(reflexão) OR title:(reflexao) OR title:(pensamento))',
+            minSeconds: _reflectionMinSeconds,
+            maxSeconds: _reflectionMaxSeconds,
+            resultLimit: 10,
+          )
+          .timeout(const Duration(seconds: 30), onTimeout: () => const []);
       if (tracks.isEmpty) return; // mantém cache/valor atual na tela
       reflectionMinutes.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
       await appPrefs.put(
@@ -256,13 +258,15 @@ class HomeScreenController extends GetxController {
     try {
       isNightTalesLoading.value = nightTales.isEmpty;
       final source = InternetArchiveSource();
-      final tracks = await source.searchNarratedAudio(
-        query:
-            'mediatype:(audio) AND $_portugueseFilter AND (subject:(conto) OR subject:(contos) OR title:(conto) OR title:(contos) OR title:(historinha) OR title:(história curta))',
-        minSeconds: _nightTalesMinSeconds,
-        maxSeconds: _nightTalesMaxSeconds,
-        resultLimit: 12,
-      );
+      final tracks = await source
+          .searchNarratedAudio(
+            query:
+                'mediatype:(audio) AND $_portugueseFilter AND (subject:(conto) OR subject:(contos) OR title:(conto) OR title:(contos) OR title:(historinha) OR title:(história curta))',
+            minSeconds: _nightTalesMinSeconds,
+            maxSeconds: _nightTalesMaxSeconds,
+            resultLimit: 10,
+          )
+          .timeout(const Duration(seconds: 30), onTimeout: () => const []);
       if (tracks.isEmpty) return;
       nightTales.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
       await appPrefs.put(
@@ -291,13 +295,15 @@ class HomeScreenController extends GetxController {
     try {
       isSoundPoetryLoading.value = soundPoetry.isEmpty;
       final source = InternetArchiveSource();
-      final tracks = await source.searchNarratedAudio(
-        query:
-            'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(declamação) OR subject:(declamacao) OR title:(poesia) OR title:(declamação) OR title:(declamacao) OR title:(verso))',
-        minSeconds: _soundPoetryMinSeconds,
-        maxSeconds: _soundPoetryMaxSeconds,
-        resultLimit: 12,
-      );
+      final tracks = await source
+          .searchNarratedAudio(
+            query:
+                'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(declamação) OR subject:(declamacao) OR title:(poesia) OR title:(declamação) OR title:(declamacao) OR title:(verso))',
+            minSeconds: _soundPoetryMinSeconds,
+            maxSeconds: _soundPoetryMaxSeconds,
+            resultLimit: 10,
+          )
+          .timeout(const Duration(seconds: 30), onTimeout: () => const []);
       if (tracks.isEmpty) return;
       soundPoetry.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
       await appPrefs.put(
