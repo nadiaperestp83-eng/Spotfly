@@ -73,8 +73,8 @@ class InternetArchiveSource implements IMusicSource {
     required String query,
     required int minSeconds,
     required int maxSeconds,
-    int candidateRows = 20,
-    int resultLimit = 10,
+    int candidateRows = 12,
+    int resultLimit = 8,
   }) async {
     final results = <Track>[];
 
@@ -95,7 +95,10 @@ class InternetArchiveSource implements IMusicSource {
         (searchBody['response']?['docs'] as List<dynamic>? ?? const []);
     if (docs.isEmpty) return results;
 
-    const batchSize = 5;
+    // Lotes pequenos (3 requisições simultâneas no máximo) pra não
+    // competir por banda numa conexão móvel fraca — mesmo motivo pelo
+    // qual as 3 seções da Home agora rodam em sequência, nunca juntas.
+    const batchSize = 3;
     for (var i = 0; i < docs.length && results.length < resultLimit; i += batchSize) {
       final batch = docs.skip(i).take(batchSize).toList();
       final batchTracks = await Future.wait(batch.map((doc) => _tryBuildTrack(
