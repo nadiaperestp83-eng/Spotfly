@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get/get.dart';
 
 import '../../features/search/data/i_music_source.dart';
+import '../../features/search/data/sources/internet_archive_source.dart';
 import '../../features/search/data/sources/piped_source.dart';
 import '../../features/search/data/sources/yt_music_api_source.dart';
 import '../../features/search/domain/search_coordinator.dart';
@@ -44,8 +45,18 @@ final musicSourcesProvider = Provider<List<IMusicSource>>((ref) {
   ];
 });
 
+/// O resolver do player recebe as fontes do orquestrador + a
+/// InternetArchiveSource (usada só pelas seções narrativas da Home:
+/// "Minutos de Reflexão", "Contos da Noite", "Poesia Sonora"). Ela fica
+/// de fora de musicSourcesProvider de propósito — não deve participar
+/// do fallback de busca normal — mas precisa estar aqui pra o player
+/// conseguir resolver a URL de áudio quando o usuário tocar uma dessas
+/// faixas.
 final playbackResolverProvider = Provider<IPlaybackResolver>((ref) {
-  return PlaybackResolver(ref.watch(musicSourcesProvider));
+  return PlaybackResolver([
+    ...ref.watch(musicSourcesProvider),
+    InternetArchiveSource(),
+  ]);
 });
 
 final metadataProviderProvider = Provider<IMetadataProvider>((ref) {
