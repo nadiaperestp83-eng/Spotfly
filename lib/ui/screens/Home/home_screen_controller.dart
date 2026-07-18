@@ -13,7 +13,9 @@ import '/models/album.dart';
 import '/models/playlist.dart';
 import '/models/quick_picks.dart';
 import '/services/music_service.dart';
+import '../../../features/search/data/sources/internet_archive_source.dart';
 import '../../../features/search/data/sources/jamendo_source.dart';
+import '../../../features/search/data/track_media_item_mapper.dart';
 import '../Settings/settings_screen_controller.dart';
 import '/ui/widgets/new_version_dialog.dart';
 
@@ -42,6 +44,35 @@ class HomeScreenController extends GetxController {
   /// via --dart-define=JAMENDO_CLIENT_ID (ver .github/workflows).
   final popularRadioStations = <MediaItem>[].obs;
   final isPopularRadioStationsLoading = false.obs;
+
+  /// 3 seções narrativas (Internet Archive), no mesmo padrão ISOLADO
+  /// da "Estações de Rádio Popular" acima: chamada direta à
+  /// InternetArchiveSource, sem passar pelo orquestrador de busca. A
+  /// InternetArchiveSource é registrada à parte em
+  /// playbackResolverProvider (ver core/providers/providers.dart) pra
+  /// essas faixas conseguirem tocar no player normal do app.
+  ///
+  /// Faixas de duração (em segundos) fáceis de ajustar depois:
+  static const _reflectionMinSeconds = 150; // 2:30
+  static const _reflectionMaxSeconds = 330; // 5:30
+  static const _nightTalesMinSeconds = 150; // 2:30
+  static const _nightTalesMaxSeconds = 330; // 5:30
+  static const _soundPoetryMinSeconds = 150; // 2:30
+  static const _soundPoetryMaxSeconds = 450; // 7:30
+
+  // Filtro de idioma reaproveitado nas 3 buscas: aceita as variações
+  // mais comuns de metadado de idioma português no Internet Archive
+  // (não exige ser produção brasileira — qualquer lusofonia serve).
+  static const _portugueseFilter =
+      'language:(por OR Portuguese OR "Português" OR pt)';
+
+  final reflectionMinutes = <MediaItem>[].obs;
+  final isReflectionMinutesLoading = false.obs;
+  final nightTales = <MediaItem>[].obs;
+  final isNightTalesLoading = false.obs;
+  final soundPoetry = <MediaItem>[].obs;
+  final isSoundPoetryLoading = false.obs;
+
   final showVersionDialog = true.obs;
   //isHomeScreenOnTop var only useful if bottom nav enabled
   final isHomeSreenOnTop = true.obs;
@@ -54,6 +85,9 @@ class HomeScreenController extends GetxController {
     loadContent();
     loadRecommendedForYou();
     loadPopularRadioStations();
+    loadReflectionMinutes();
+    loadNightTales();
+    loadSoundPoetry();
     if (updateCheckFlag) _checkNewVersion();
   }
 
@@ -165,6 +199,113 @@ class HomeScreenController extends GetxController {
       printERROR("Popular radio stations (Jamendo) not loaded due to: $e");
     } finally {
       isPopularRadioStationsLoading.value = false;
+    }
+  }
+
+  /// "Minutos de Reflexão": poemas/reflexões curtas (2:30-5:30) em
+  /// português, curadas no Internet Archive. Mostra cache salvo
+  /// primeiro (mesmo padrão de loadRecommendedForYou), atualiza em
+  /// segundo plano, e nunca sobrescreve com lista vazia.
+  Future<void> loadReflectionMinutes() async {
+    final appPrefs = Hive.isBoxOpen("AppPrefs")
+        ? Hive.box("AppPrefs")
+        : await Hive.openBox("AppPrefs");
+
+    final cached = appPrefs.get("reflectionMinutesCache") as String?;
+    if (cached != null && cached.isNotEmpty) {
+      try {
+        reflectionMinutes.value = InternetArchiveSource.decodeCachedTracks(cached);
+      } catch (_) {}
+    }
+
+    try {
+      isReflectionMinutesLoading.value = reflectionMinutes.isEmpty;
+      final source = InternetArchiveSource();
+      final tracks = await source.searchNarratedAudio(
+        query:
+            'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(reflexão) OR subject:(reflexao) OR title:(poema) OR title:(reflexão) OR title:(reflexao) OR title:(pensamento))',
+        minSeconds: _reflectionMinSeconds,
+        maxSeconds: _reflectionMaxSeconds,
+        resultLimit: 12,
+      );
+      if (tracks.isEmpty) return; // mantém cache/valor atual na tela
+      reflectionMinutes.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
+      await appPrefs.put(
+          "reflectionMinutesCache", InternetArchiveSource.encodeCachedTracks(tracks));
+    } catch (e) {
+      printERROR("Minutos de Reflexão (Internet Archive) not loaded due to: $e");
+    } finally {
+      isReflectionMinutesLoading.value = false;
+    }
+  }
+
+  /// "Contos da Noite": contos curtos (2:30-5:30) em português,
+  /// curados no Internet Archive.
+  Future<void> loadNightTales() async {
+    final appPrefs = Hive.isBoxOpen("AppPrefs")
+        ? Hive.box("AppPrefs")
+        : await Hive.openBox("AppPrefs");
+
+    final cached = appPrefs.get("nightTalesCache") as String?;
+    if (cached != null && cached.isNotEmpty) {
+      try {
+        nightTales.value = InternetArchiveSource.decodeCachedTracks(cached);
+      } catch (_) {}
+    }
+
+    try {
+      isNightTalesLoading.value = nightTales.isEmpty;
+      final source = InternetArchiveSource();
+      final tracks = await source.searchNarratedAudio(
+        query:
+            'mediatype:(audio) AND $_portugueseFilter AND (subject:(conto) OR subject:(contos) OR title:(conto) OR title:(contos) OR title:(historinha) OR title:(história curta))',
+        minSeconds: _nightTalesMinSeconds,
+        maxSeconds: _nightTalesMaxSeconds,
+        resultLimit: 12,
+      );
+      if (tracks.isEmpty) return;
+      nightTales.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
+      await appPrefs.put(
+          "nightTalesCache", InternetArchiveSource.encodeCachedTracks(tracks));
+    } catch (e) {
+      printERROR("Contos da Noite (Internet Archive) not loaded due to: $e");
+    } finally {
+      isNightTalesLoading.value = false;
+    }
+  }
+
+  /// "Poesia Sonora": declamação de poesia em português (qualquer
+  /// país lusófono, não só Brasil), curada no Internet Archive.
+  Future<void> loadSoundPoetry() async {
+    final appPrefs = Hive.isBoxOpen("AppPrefs")
+        ? Hive.box("AppPrefs")
+        : await Hive.openBox("AppPrefs");
+
+    final cached = appPrefs.get("soundPoetryCache") as String?;
+    if (cached != null && cached.isNotEmpty) {
+      try {
+        soundPoetry.value = InternetArchiveSource.decodeCachedTracks(cached);
+      } catch (_) {}
+    }
+
+    try {
+      isSoundPoetryLoading.value = soundPoetry.isEmpty;
+      final source = InternetArchiveSource();
+      final tracks = await source.searchNarratedAudio(
+        query:
+            'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(declamação) OR subject:(declamacao) OR title:(poesia) OR title:(declamação) OR title:(declamacao) OR title:(verso))',
+        minSeconds: _soundPoetryMinSeconds,
+        maxSeconds: _soundPoetryMaxSeconds,
+        resultLimit: 12,
+      );
+      if (tracks.isEmpty) return;
+      soundPoetry.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
+      await appPrefs.put(
+          "soundPoetryCache", InternetArchiveSource.encodeCachedTracks(tracks));
+    } catch (e) {
+      printERROR("Poesia Sonora (Internet Archive) not loaded due to: $e");
+    } finally {
+      isSoundPoetryLoading.value = false;
     }
   }
 
