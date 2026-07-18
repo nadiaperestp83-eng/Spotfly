@@ -82,13 +82,29 @@ class HomeScreenController extends GetxController {
   @override
   onInit() {
     super.onInit();
-    loadContent();
+    loadContent().then((_) {
+      // As 3 seções narrativas (Internet Archive) SÓ começam depois que
+      // o carregamento principal da Home (YouTube/quickPicks) termina
+      // — nunca em paralelo com ele. Eram várias requisições de rede
+      // simultâneas disputando banda/conexões numa conexão móvel fraca,
+      // o que podia derrubar/atrasar o loadContentFromNetwork() a
+      // ponto de vir vazio (ou nunca marcar isContentFetched = true,
+      // prendendo o shimmer na tela pra sempre). loadContent() em si
+      // não foi alterado.
+      _loadNarrativeSectionsSequentially();
+    });
     loadRecommendedForYou();
     loadPopularRadioStations();
-    loadReflectionMinutes();
-    loadNightTales();
-    loadSoundPoetry();
     if (updateCheckFlag) _checkNewVersion();
+  }
+
+  /// Carrega as 3 seções narrativas uma de cada vez (não em paralelo
+  /// entre si) — reduz ainda mais o pico de requisições simultâneas ao
+  /// Internet Archive numa conexão móvel.
+  Future<void> _loadNarrativeSectionsSequentially() async {
+    await loadReflectionMinutes();
+    await loadNightTales();
+    await loadSoundPoetry();
   }
 
   /// Monta a seção "Recommended for you" a partir do histórico local:
