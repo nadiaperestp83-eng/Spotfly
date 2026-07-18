@@ -20,6 +20,7 @@ import '../../widgets/home/audio_narrative_widget.dart';
 import '../../widgets/home/popular_radio_stations_widget.dart';
 import '../../widgets/home/recommended_for_you_widget.dart';
 import '../../widgets/home/recommended_list_widget.dart';
+import '../../../features/player/presentation/player_widget.dart';
 import 'home_screen_controller.dart';
 import '../Settings/settings_screen.dart';
 
@@ -285,7 +286,16 @@ class Body extends StatelessWidget {
                         child: DesktopSearchBar()),
                   );
                 }),
-              )
+              ),
+            // Mini player das faixas fallback (Internet Archive/Jamendo)
+            // tocadas via Riverpod — some sozinho quando não há faixa
+            // tocando (ver PlayerWidget).
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 90,
+              child: const PlayerWidget(),
+            ),
           ],
         ),
       );
