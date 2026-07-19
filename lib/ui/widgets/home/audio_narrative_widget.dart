@@ -34,7 +34,7 @@ class AudioNarrativeWidget extends StatelessWidget {
   final List<Color> gradientColors;
   final bool isLoading;
 
-  static const double _cardSize = 140;
+  static const double _cardSize = 120;
 
   @override
   Widget build(BuildContext context) {
@@ -49,10 +49,10 @@ class AudioNarrativeWidget extends StatelessWidget {
             padding: const EdgeInsets.only(right: 10, bottom: 12),
             child: Text(
               sectionTitle,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(fontSize: 20),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
             ),
           ),
           SizedBox(
