@@ -6,16 +6,16 @@ import '../../../models/playling_from.dart';
 import '../../../models/quick_picks.dart';
 import '../../player/player_controller.dart';
 import '../image_widget.dart';
-import '../songinfo_bottom_sheet.dart';
 
-/// Seção "Recommended for you": card cinza arredondado (Theme.cardColor,
-/// igual ao usado em RecentPlayedRow) com lista de músicas cujas capas
-/// são avatares circulares — visual pedido explicitamente pelo usuário,
-/// diferente do quadrado com cantos de 8dp usado no resto do app.
+/// Seção "Recommended for you": card colagem grande estilo "New Music
+/// Mix" da Apple Music — um bloco de texto em destaque à esquerda +
+/// grade de capas à direita + botão de play grande no canto. Pedido
+/// explícito do usuário pra reproduzir esse card de referência.
 ///
-/// Fonte dos dados: HomeScreenController.recommendedForYou, que combina
-/// o histórico local (Hive "LIBRP") como semente com a API de músicas
-/// relacionadas (ver home_screen_controller.dart -> loadRecommendedForYou).
+/// A lógica não mudou: mesma fonte de dados
+/// (HomeScreenController.recommendedForYou) e o mesmo
+/// playPlayListSong() de sempre — só a apresentação virou colagem em
+/// vez de lista vertical de linhas.
 class RecommendedForYouWidget extends StatelessWidget {
   const RecommendedForYouWidget({
     super.key,
@@ -31,139 +31,159 @@ class RecommendedForYouWidget extends StatelessWidget {
 
     final playerController = Get.find<PlayerController>();
     final colorScheme = Theme.of(context).colorScheme;
+    final songs = content.songList;
+
+    void playAll() {
+      if (songs.isEmpty) return;
+      playerController.playPlayListSong(
+        List<MediaItem>.from(songs),
+        0,
+        playfrom: PlaylingFrom(
+          type: PlaylingFromType.SELECTION,
+          name: content.title,
+        ),
+      );
+    }
+
+    /// Pega a capa do índice [i], repetindo a lista se ela for menor
+    /// que o número de espaços da colagem (ex.: só 2 recomendações).
+    MediaItem coverAt(int i) => songs[i % songs.length];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 24, right: 10),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        padding: const EdgeInsets.fromLTRB(14, 14, 6, 6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "recommendedForYou".tr,
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          if (isLoading && songs.isEmpty)
+            SizedBox(
+              height: 170,
+              child: Center(
+                child: SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: colorScheme.secondary),
+                ),
+              ),
+            )
+          else
+            GestureDetector(
+              onTap: playAll,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: SizedBox(
+                  height: 170,
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Icon(Icons.auto_awesome_rounded,
-                          size: 18, color: colorScheme.primary),
-                      const SizedBox(width: 6),
+                      // Bloco de destaque (texto), estilo "New Music
+                      // Mix" — usa a cor de destaque do tema pra ficar
+                      // consistente entre claro e escuro.
                       Expanded(
-                        child: Text(
-                          "recommendedForYou".tr,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(fontSize: 18),
+                        flex: 3,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                colorScheme.secondary,
+                                colorScheme.secondary.withOpacity(0.75),
+                              ],
+                            ),
+                          ),
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "recommendedForYou".tr,
+                                maxLines: 3,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 22,
+                                  height: 1.15,
+                                ),
+                              ),
+                              const Text(
+                                "Feito pra você",
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 3),
+                      // Colagem de capas (2x2) — cada item já toca a
+                      // playlist inteira a partir dele.
+                      if (songs.isNotEmpty) ...[
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            children: [
+                              Expanded(
+                                  child: ImageWidget(
+                                      song: coverAt(0), size: 80)),
+                              const SizedBox(height: 3),
+                              Expanded(
+                                  child: ImageWidget(
+                                      song: coverAt(1), size: 80)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          flex: 2,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              ImageWidget(song: coverAt(2), size: 90),
+                              // Botão de play grande no canto,
+                              // sobreposto à última capa — mesmo papel
+                              // do círculo vermelho do print.
+                              Positioned(
+                                right: 8,
+                                bottom: 8,
+                                child: Material(
+                                  color: colorScheme.secondary,
+                                  shape: const CircleBorder(),
+                                  elevation: 3,
+                                  child: InkWell(
+                                    customBorder: const CircleBorder(),
+                                    onTap: playAll,
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(10),
+                                      child: Icon(Icons.play_arrow,
+                                          color: Colors.white, size: 24),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-                if (content.songList.isNotEmpty)
-                  IconButton(
-                    tooltip: "play".tr,
-                    icon: CircleAvatar(
-                      radius: 18,
-                      backgroundColor: colorScheme.primary,
-                      child: Icon(Icons.play_arrow,
-                          color: colorScheme.onPrimary, size: 20),
-                    ),
-                    onPressed: () {
-                      playerController.playPlayListSong(
-                        List<MediaItem>.from(content.songList),
-                        0,
-                        playfrom: PlaylingFrom(
-                          type: PlaylingFromType.SELECTION,
-                          name: content.title,
-                        ),
-                      );
-                    },
-                  ),
-              ],
-            ),
-            if (isLoading && content.songList.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 30),
-                child: Center(
-                  child: SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              )
-            else
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: content.songList.length,
-                itemBuilder: (context, index) {
-                  final song = content.songList[index];
-                  return ListTile(
-                    contentPadding: const EdgeInsets.only(left: 0, right: 8),
-                    leading: SizedBox(
-                      width: 50,
-                      height: 50,
-                      child: Center(
-                        child: ImageWidget(
-                          song: song,
-                          size: 50,
-                          forceCircle: true,
-                        ),
-                      ),
-                    ),
-                    title: Text(
-                      song.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    subtitle: Text(
-                      "${song.artist}",
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    trailing: IconButton(
-                      splashRadius: 20,
-                      icon: const Icon(Icons.more_vert),
-                      onPressed: () => _showSongInfo(context, song),
-                    ),
-                    onTap: () => playerController.playPlayListSong(
-                      List<MediaItem>.from(content.songList),
-                      index,
-                      playfrom: PlaylingFrom(
-                        type: PlaylingFromType.SELECTION,
-                        name: content.title,
-                      ),
-                    ),
-                    onLongPress: () => _showSongInfo(context, song),
-                  );
-                },
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
-  }
-
-  void _showSongInfo(BuildContext context, MediaItem song) {
-    final playerController = Get.find<PlayerController>();
-    showModalBottomSheet(
-      constraints: const BoxConstraints(maxWidth: 500),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(10.0)),
-      ),
-      isScrollControlled: true,
-      context: playerController.homeScaffoldkey.currentState!.context,
-      barrierColor: Colors.transparent.withAlpha(100),
-      builder: (context) => SongInfoBottomSheet(song),
-    ).whenComplete(() => Get.delete<SongInfoController>());
   }
 }
