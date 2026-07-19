@@ -59,7 +59,7 @@ class RecommendedForYouWidget extends StatelessWidget {
             style: Theme.of(context)
                 .textTheme
                 .titleMedium
-                ?.copyWith(fontSize: 20, fontWeight: FontWeight.w800),
+                ?.copyWith(fontSize: 17, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           if (isLoading && songs.isEmpty)
