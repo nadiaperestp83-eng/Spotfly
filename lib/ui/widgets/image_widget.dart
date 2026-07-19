@@ -34,6 +34,11 @@ class ImageWidget extends StatelessWidget {
   /// de músicas que devem imitar o layout circular do Spotify.
   final bool forceCircle;
 
+  /// Raio de borda: 20 pra capa da tela "Now Playing" (pedido explícito
+  /// do redesign estilo Apple Music — BorderRadius.circular(20)), 8
+  /// pro resto (listas, mini player) — mantém o padrão existente.
+  double get _radius => isPlayerArtImage ? 20 : 8;
+
   @override
   Widget build(BuildContext context) {
     String imageUrl = song != null
@@ -71,7 +76,7 @@ class ImageWidget extends StatelessWidget {
             ? BoxShape.circle
             : BoxShape.rectangle,
         borderRadius:
-            (artist != null || forceCircle) ? null : BorderRadius.circular(8),
+            (artist != null || forceCircle) ? null : BorderRadius.circular(_radius),
       ),
       child: offlineAvailable
           ? Image.file(
@@ -99,7 +104,7 @@ class ImageWidget extends StatelessWidget {
                           : BoxShape.rectangle,
                       borderRadius: (artist != null || forceCircle)
                           ? null
-                          : BorderRadius.circular(8),
+                          : BorderRadius.circular(_radius),
                     ),
                     child: Image.asset(
                         "assets/icons/${song != null ? "song" : artist != null ? "artist" : "album"}.png"));
@@ -116,7 +121,7 @@ class ImageWidget extends StatelessWidget {
                           : BoxShape.rectangle,
                       borderRadius: (artist != null || forceCircle)
                           ? null
-                          : BorderRadius.circular(8),
+                          : BorderRadius.circular(_radius),
                       color: Colors.white54,
                     ),
                   ))),
