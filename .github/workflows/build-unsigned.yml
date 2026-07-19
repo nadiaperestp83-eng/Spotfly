@@ -53,7 +53,8 @@ jobs:
             --no-tree-shake-icons \
             --android-skip-build-dependency-validation \
             --dart-define=JAMENDO_CLIENT_ID=${{ secrets.JAMENDO_CLIENT_ID }} \
-            --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}
+            --dart-define=LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }} \
+            --dart-define=LISTENNOTES_API_KEY=${{ secrets.LISTENNOTES_API_KEY }}
 
       - name: Upload do APK como artefato
         uses: actions/upload-artifact@v4
