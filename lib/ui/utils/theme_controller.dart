@@ -20,6 +20,16 @@ const Color kDeepBackground = Color(0xFF0A0A0A);
 /// "bloco" visualmente destacado.
 const Color kSurfaceElevated = Color(0xFF181818);
 
+/// Vermelho de destaque estilo Apple Music (mesmo tom usado nos ícones
+/// de "play"/highlights do app da Apple). Usado só no ThemeType.light,
+/// que agora é o padrão do redesign "elegante, minimalista".
+const Color kAppleAccentColor = Color(0xFFFA233B);
+
+/// Fundo "agrupado" do iOS (systemGroupedBackground) — cinza bem claro
+/// atrás de cards brancos, em vez de branco puro colado em branco puro.
+/// É o que dá aquela sensação de hierarquia/respiro do Apple Music.
+const Color kAppleGroupedBackground = Color(0xFFF2F2F7);
+
 class ThemeController extends GetxController {
   final primaryColor = Colors.deepPurple[400].obs;
   final textColor = Colors.white24.obs;
@@ -37,8 +47,12 @@ class ThemeController extends GetxController {
     primaryColor.value =
         Color(Hive.box('appPrefs').get("themePrimaryColor") ?? 4278199603);
 
-    changeThemeModeType(
-        ThemeType.values[Hive.box('appPrefs').get("themeModeType") ?? 0]);
+    changeThemeModeType(ThemeType.values[
+        // Redesign "estilo Apple Music": tema claro fixo passou a ser o
+        // padrão do app (era ThemeType.dynamic = índice 0). Quem já
+        // tinha escolhido outro tema manualmente nas Configurações não
+        // é afetado — esse fallback só vale pra instalação nova/limpa.
+        Hive.box('appPrefs').get("themeModeType") ?? ThemeType.light.index]);
 
     _listenSystemBrightness();
 
@@ -329,60 +343,79 @@ class ThemeController extends GetxController {
       final baseTheme = ThemeData(
           useMaterial3: false,
           brightness: Brightness.light,
-          canvasColor: Colors.white,
+          // Fundo "agrupado" cinza-claro (não branco puro) atrás de
+          // cards brancos — é o que dá a sensação de hierarquia e
+          // "respiro" do Apple Music/Library (ver kAppleGroupedBackground).
+          scaffoldBackgroundColor: kAppleGroupedBackground,
+          canvasColor: kAppleGroupedBackground,
+          cardColor: Colors.white,
           colorScheme: ColorScheme.fromSwatch(
-              accentColor: Colors.grey[400],
-              backgroundColor: Colors.white,
+              accentColor: kAppleAccentColor,
+              backgroundColor: kAppleGroupedBackground,
               cardColor: Colors.white,
               brightness: Brightness.light),
           primaryColor: Colors.white,
           primaryColorLight: Colors.grey[300],
           progressIndicatorTheme: ProgressIndicatorThemeData(
-              linearTrackColor: Colors.grey[700], color: Colors.grey[400]),
+              linearTrackColor: Colors.grey[300], color: kAppleAccentColor),
           textTheme: TextTheme(
               titleLarge: const TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.6,
+                color: Colors.black,
               ),
               titleMedium: const TextStyle(
                 fontWeight: FontWeight.bold,
+                color: Colors.black,
               ),
-              titleSmall: const TextStyle(),
+              titleSmall: TextStyle(color: Colors.grey[600]),
               labelMedium: const TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 23,
+                color: Colors.black,
               ),
               labelSmall: const TextStyle(
-                  fontSize: 15, letterSpacing: 0, fontWeight: FontWeight.bold),
+                  fontSize: 15,
+                  letterSpacing: 0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black),
               bodyMedium: TextStyle(color: Colors.grey[700])),
           navigationRailTheme: NavigationRailThemeData(
               backgroundColor: Colors.white,
-              selectedIconTheme: const IconThemeData(color: Colors.black),
-              unselectedIconTheme: IconThemeData(color: Colors.grey[800]),
+              selectedIconTheme: const IconThemeData(color: kAppleAccentColor),
+              unselectedIconTheme: IconThemeData(color: Colors.grey[500]),
               selectedLabelTextStyle: const TextStyle(
-                  color: Colors.black,
+                  color: kAppleAccentColor,
                   fontWeight: FontWeight.bold,
                   fontSize: 15),
               unselectedLabelTextStyle: TextStyle(
-                  color: Colors.grey[800], fontWeight: FontWeight.bold)),
-          bottomSheetTheme: const BottomSheetThemeData(
-              backgroundColor: Colors.white, modalBarrierColor: Colors.white),
-          sliderTheme: SliderThemeData(
+                  color: Colors.grey[500], fontWeight: FontWeight.bold)),
+          bottomSheetTheme: BottomSheetThemeData(
+              backgroundColor: Colors.white,
+              modalBarrierColor: Colors.black.withOpacity(0.35),
+              shape: const RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(20)))),
+          sliderTheme: const SliderThemeData(
             //base bar color
-            inactiveTrackColor: Colors.black38,
+            inactiveTrackColor: Color(0xFFE5E5EA),
             //buffered progress
-            activeTrackColor: Colors.grey[800],
+            activeTrackColor: kAppleAccentColor,
             //progress bar color
             valueIndicatorColor: Colors.white38,
-            thumbColor: Colors.grey[800],
+            thumbColor: kAppleAccentColor,
+            trackHeight: 3,
           ),
-          textSelectionTheme: TextSelectionThemeData(
-              cursorColor: Colors.grey[400],
-              selectionColor: Colors.grey[400],
-              selectionHandleColor: Colors.grey[400]),
+          textSelectionTheme: const TextSelectionThemeData(
+              cursorColor: kAppleAccentColor,
+              selectionColor: kAppleAccentColor,
+              selectionHandleColor: kAppleAccentColor),
           // CORREÇÃO:
-          dialogTheme: const DialogTheme(backgroundColor: Color(0xFFE0E0E0)),
+          dialogTheme: const DialogTheme(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(16)))),
           inputDecorationTheme: const InputDecorationTheme(
               focusColor: Colors.black,
               focusedBorder: UnderlineInputBorder(
