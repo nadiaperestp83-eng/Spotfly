@@ -281,10 +281,12 @@ class Body extends StatelessWidget {
                                 ]
                               : const [HomeShimmer.compact()],
                         ];
-                        return ListView.builder(
+                        return ListView.separated(
                           padding:
                               EdgeInsets.only(bottom: 200, top: topPadding),
                           itemCount: items.length,
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(height: 20),
                           itemBuilder: (context, index) => items[index],
                         );
                       }),
