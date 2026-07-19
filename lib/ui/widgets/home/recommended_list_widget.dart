@@ -36,7 +36,10 @@ class RecommendedListWidget extends StatelessWidget {
                 child: Text(
                   content.title,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
               ),
               IconButton(
