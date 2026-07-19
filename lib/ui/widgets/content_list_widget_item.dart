@@ -29,15 +29,16 @@ class ContentListItem extends StatelessWidget {
             arguments: [content, content.playlistId]);
       },
       child: Container(
-        width: 130,
-        height: 180,
-        padding: const EdgeInsets.symmetric(horizontal: 5),
+        width: 112,
+        height: 170,
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             isAlbum
                 ? ImageWidget(
-                    size: 120,
+                    size: 104,
                     album: content,
                   )
                 : content.isCloudPlaylist ||
@@ -46,11 +47,11 @@ class ContentListItem extends StatelessWidget {
                             content.playlistId == 'SongsCache' ||
                             content.playlistId == 'SongDownloads')
                     ? SizedBox.square(
-                        dimension: 120,
+                        dimension: 104,
                         child: Stack(
                           children: [
                             ImageWidget(
-                              size: 120,
+                              size: 104,
                               playlist: content,
                             ),
                             if (content.isPipedPlaylist)
@@ -107,8 +108,8 @@ class ContentListItem extends StatelessWidget {
                         ),
                       )
                     : Container(
-                        height: 120,
-                        width: 120,
+                        height: 104,
+                        width: 104,
                         decoration: BoxDecoration(
                             color: Theme.of(context).primaryColorLight,
                             borderRadius: BorderRadius.circular(10)),
@@ -124,31 +125,31 @@ class ContentListItem extends StatelessWidget {
                           color: Colors.white,
                           size: 40,
                         ))),
-            const SizedBox(height: 5),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    content.title,
-                    // overflow: TextOverflow.ellipsis,
-                    maxLines: 2,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  Text(
-                    isAlbum
-                        ? isLibraryItem
-                            ? ""
-                            : "${content.artists[0]['name'] ?? ""} | ${content.year ?? ""}"
-                        : isLibraryItem
-                            ? ""
-                            : content.description ?? "",
-                    maxLines: 1,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ],
-              ),
-            )
+            const SizedBox(height: 6),
+            Text(
+              content.title,
+              // overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              isAlbum
+                  ? isLibraryItem
+                      ? ""
+                      : "${content.artists[0]['name'] ?? ""} | ${content.year ?? ""}"
+                  : isLibraryItem
+                      ? ""
+                      : content.description ?? "",
+              maxLines: 1,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontSize: 11.5),
+            ),
           ],
         ),
       ),
