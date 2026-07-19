@@ -4,7 +4,20 @@ import 'package:shimmer/shimmer.dart';
 import 'basic_container.dart';
 
 class HomeShimmer extends StatelessWidget {
-  const HomeShimmer({super.key});
+  const HomeShimmer({super.key})
+      : rows = 2,
+        _compact = false;
+
+  /// Usado quando SÓ falta o conteúdo do YouTube Music (quickPicks +
+  /// middleContent + fixedContent) — as outras seções da Home
+  /// (Recommended for you, Mais tocadas, narrativas, rádios) já têm
+  /// seu próprio cache-first e não devem ficar escondidas atrás desse
+  /// shimmer enquanto isso. Ver home_screen.dart: esse widget some
+  /// assim que HomeScreenController.isContentFetched vira true.
+  const HomeShimmer.compact({super.key, this.rows = 2}) : _compact = true;
+
+  final int rows;
+  final bool _compact;
 
   @override
   Widget build(BuildContext context) {
@@ -14,7 +27,9 @@ class HomeShimmer extends StatelessWidget {
         enabled: true,
         direction: ShimmerDirection.ltr,
         child: Column(
-          children: [_discoverWidget(), _contentWidget(), _contentWidget()],
+          children: _compact
+              ? List.generate(rows, (_) => _contentWidget())
+              : [_discoverWidget(), _contentWidget(), _contentWidget()],
         ));
   }
 
