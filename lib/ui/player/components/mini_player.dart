@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -34,24 +36,43 @@ class MiniPlayer extends StatelessWidget {
             height: playerController.playerPanelMinHeight.value,
             width: size.width,
             // Visual "card flutuante" estilo Apple Music: margem lateral
-            // + cantos arredondados + sombra suave. A lógica de
+            // + margem inferior (pra "descolar" da bottom nav bar) +
+            // cantos arredondados + sombra suave. A lógica de
             // posicionamento continua 100% do SlidingUpPanel (ver
             // player.dart) — só a aparência mudou, nada do mecanismo de
             // arrastar/expandir foi tocado.
-            margin: const EdgeInsets.symmetric(horizontal: 10),
-            clipBehavior: Clip.antiAlias,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             decoration: BoxDecoration(
-              color: Theme.of(context).bottomSheetTheme.backgroundColor,
-              borderRadius: const BorderRadius.all(Radius.circular(16)),
+              borderRadius: const BorderRadius.all(Radius.circular(15)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withOpacity(0.18),
                   blurRadius: 18,
                   offset: const Offset(0, 6),
                 ),
               ],
             ),
-            child: Center(
+            // Glassmorphism real: o BackdropFilter borra o que está
+            // ATRÁS do player (a lista de conteúdo rolando por baixo),
+            // e a cor do Container abaixo é aplicada com opacidade < 1
+            // para deixar esse borrão transparecer — igual ao efeito já
+            // usado na BottomNavBar (ver bottom_nav_bar.dart).
+            child: ClipRRect(
+              borderRadius: const BorderRadius.all(Radius.circular(15)),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: (Theme.of(context).bottomSheetTheme.backgroundColor ??
+                            Theme.of(context).canvasColor)
+                        .withOpacity(0.72),
+                    borderRadius: const BorderRadius.all(Radius.circular(15)),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.08),
+                      width: 0.6,
+                    ),
+                  ),
+                  child: Center(
               child: Column(
                 children: [
                   !isWideScreen || bottomNavEnabled
@@ -519,6 +540,9 @@ class MiniPlayer extends StatelessWidget {
                 ],
               ),
             ),
+                  ),
+                ),
+              ),
           ),
         ),
       );
