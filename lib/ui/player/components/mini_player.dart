@@ -33,7 +33,24 @@ class MiniPlayer extends StatelessWidget {
           child: Container(
             height: playerController.playerPanelMinHeight.value,
             width: size.width,
-            color: Theme.of(context).bottomSheetTheme.backgroundColor,
+            // Visual "card flutuante" estilo Apple Music: margem lateral
+            // + cantos arredondados + sombra suave. A lógica de
+            // posicionamento continua 100% do SlidingUpPanel (ver
+            // player.dart) — só a aparência mudou, nada do mecanismo de
+            // arrastar/expandir foi tocado.
+            margin: const EdgeInsets.symmetric(horizontal: 10),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: Theme.of(context).bottomSheetTheme.backgroundColor,
+              borderRadius: const BorderRadius.all(Radius.circular(16)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
             child: Center(
               child: Column(
                 children: [
