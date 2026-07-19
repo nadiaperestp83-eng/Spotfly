@@ -110,7 +110,7 @@ class SongListTile extends StatelessWidget with RemoveSongFromPlaylistMixin {
             ),
           ]),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 4),
             child: ListTile(
             onTap: onTap,
             onLongPress: () async {
@@ -130,7 +130,12 @@ class SongListTile extends StatelessWidget with RemoveSongFromPlaylistMixin {
                 ),
               ).whenComplete(() => Get.delete<SongInfoController>());
             },
-            contentPadding: const EdgeInsets.only(top: 0, left: 5, right: 30),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            // Estilo Apple Music: capa/ícone alinhado à esquerda com
+            // cantos levemente arredondados (ver ImageWidget._radius),
+            // título em negrito 16sp, autor em cinza 14sp, ação
+            // discreta (só ícone, sem fundo colorido) à direita.
             leading: thumbReplacementWithIndex
                 ? SizedBox(
                     width: 27.5,
@@ -143,13 +148,13 @@ class SongListTile extends StatelessWidget with RemoveSongFromPlaylistMixin {
                     ),
                   )
                 : SizedBox(
-                    width: 50,
-                    height: 50,
+                    width: 48,
+                    height: 48,
                     child: Center(
                       child: ImageWidget(
-                        size: 50,
+                        size: 48,
                         song: song,
-                        forceCircle: true,
+                        forceCircle: false,
                       ),
                     ),
                   ),
@@ -164,8 +169,8 @@ class SongListTile extends StatelessWidget with RemoveSongFromPlaylistMixin {
                 maxLines: 1,
                 style: GoogleFonts.dmSans(
                   fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                  fontSize: Theme.of(context).textTheme.titleMedium?.fontSize,
+                  fontSize: 16,
+                  color: Theme.of(context).textTheme.titleMedium?.color,
                 ),
               ),
             ),
@@ -174,8 +179,10 @@ class SongListTile extends StatelessWidget with RemoveSongFromPlaylistMixin {
               maxLines: 1,
               style: GoogleFonts.dmSans(
                 fontWeight: FontWeight.w400,
-                color: const Color(0xFFB3B3B3),
-                fontSize: Theme.of(context).textTheme.titleSmall?.fontSize,
+                fontSize: 14,
+                color: Theme.of(context).brightness == Brightness.light
+                    ? Colors.grey[600]
+                    : const Color(0xFFB3B3B3),
               ),
             ),
             trailing: SizedBox(
@@ -189,8 +196,12 @@ class SongListTile extends StatelessWidget with RemoveSongFromPlaylistMixin {
                       if (isPlaylistOrAlbum)
                         Obx(() =>
                             playerController.currentSong.value?.id == song.id
-                                ? const Icon(
+                                ? Icon(
                                     Icons.equalizer,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .secondary,
+                                    size: 18,
                                   )
                                 : const SizedBox.shrink()),
                       Text(
@@ -221,7 +232,12 @@ class SongListTile extends StatelessWidget with RemoveSongFromPlaylistMixin {
                           ).whenComplete(
                               () => Get.delete<SongInfoController>());
                         },
-                        icon: const Icon(Icons.more_vert))
+                        icon: Icon(Icons.more_vert,
+                            size: 20,
+                            color: Theme.of(context).brightness ==
+                                    Brightness.light
+                                ? Colors.grey[500]
+                                : Colors.grey[400]))
                 ],
               ),
             ),
