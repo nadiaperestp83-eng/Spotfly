@@ -63,6 +63,7 @@ dependencies:
   flutter_riverpod: ^2.6.1
   meta: ^1.15.0
   http: ^1.2.2
+  webfeed_plus: ^1.0.1
   youtube_explode_dart:
     git:
       url: https://github.com/anandnet/youtube_explode_dart.git
