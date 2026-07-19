@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -5,6 +7,7 @@ import 'package:hive/hive.dart';
 
 import '/models/media_Item_builder.dart';
 import '/ui/player/player_controller.dart';
+import '../../../core/models/podcast_episode.dart';
 import '../../../core/riverpod/app_provider_container.dart';
 import '../../../features/home/state/home_notifier.dart';
 import '../../../utils/update_check_flag_file.dart';
@@ -13,7 +16,7 @@ import '/models/album.dart';
 import '/models/playlist.dart';
 import '/models/quick_picks.dart';
 import '/services/music_service.dart';
-import '../../../features/search/data/sources/internet_archive_source.dart';
+import '../../../features/search/data/sources/audio_content_service.dart';
 import '../../../features/search/data/sources/jamendo_source.dart';
 import '../../../features/search/data/track_media_item_mapper.dart';
 import '../Settings/settings_screen_controller.dart';
@@ -58,13 +61,19 @@ class HomeScreenController extends GetxController {
   final trendingSongs = QuickPicks([]).obs;
   final isTrendingSongsLoading = false.obs;
 
-  /// 3 seções narrativas (Internet Archive), no mesmo padrão ISOLADO
-  /// da "Estações de Rádio Popular" acima: chamada direta à
-  /// InternetArchiveSource, sem passar pelo orquestrador de busca. A
-  /// InternetArchiveSource é registrada à parte em
+  /// 3 seções narrativas (Minutos de Reflexão, Contos da Noite, Poesia
+  /// Sonora), no mesmo padrão ISOLADO da "Estações de Rádio Popular"
+  /// acima: não passam pelo orquestrador de busca normal
+  /// (musicSourcesProvider). A fonte é o AudioContentService
+  /// ("Fallback Híbrido": iTunes Search API + RSS primeiro,
+  /// Internet Archive como fallback automático se o iTunes falhar ou
+  /// não achar nada) — ver
+  /// lib/features/search/data/sources/audio_content_service.dart.
+  /// ItunesSource e InternetArchiveSource são registradas à parte em
   /// playbackResolverProvider (ver core/providers/providers.dart) pra
   /// essas faixas conseguirem tocar no player normal do app.
-  ///
+  final AudioContentService _audioContentService = AudioContentService();
+
   /// Faixas de duração (em segundos) fáceis de ajustar depois:
   static const _reflectionMinSeconds = 150; // 2:30
   static const _reflectionMaxSeconds = 330; // 5:30
@@ -292,13 +301,15 @@ class HomeScreenController extends GetxController {
   }
 
   /// "Minutos de Reflexão": poemas/reflexões curtas (2:30-5:30) em
-  /// português, curadas no Internet Archive. Mostra cache salvo
-  /// primeiro (mesmo padrão de loadRecommendedForYou), atualiza em
-  /// segundo plano, e nunca sobrescreve com lista vazia.
+  /// português. Mostra cache salvo primeiro (mesmo padrão de
+  /// loadRecommendedForYou), atualiza em segundo plano, e nunca
+  /// sobrescreve com lista vazia. Fonte: AudioContentService
+  /// (iTunes -> Internet Archive).
   Future<void> loadReflectionMinutes() => _loadNarrativeSection(
         cacheKey: "reflectionMinutesCache",
         fetchedAtKey: "reflectionMinutesFetchedAt",
-        query:
+        itunesTerm: "poesia reflexão meditação",
+        archiveQuery:
             'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(reflexão) OR subject:(reflexao) OR title:(poema) OR title:(reflexão) OR title:(reflexao) OR title:(pensamento))',
         minSeconds: _reflectionMinSeconds,
         maxSeconds: _reflectionMaxSeconds,
@@ -308,12 +319,13 @@ class HomeScreenController extends GetxController {
         logLabel: "Minutos de Reflexão",
       );
 
-  /// "Contos da Noite": contos curtos (2:30-5:30) em português,
-  /// curados no Internet Archive.
+  /// "Contos da Noite": contos curtos (2:30-5:30) em português.
+  /// Fonte: AudioContentService (iTunes -> Internet Archive).
   Future<void> loadNightTales() => _loadNarrativeSection(
         cacheKey: "nightTalesCache",
         fetchedAtKey: "nightTalesFetchedAt",
-        query:
+        itunesTerm: "contos infantis histórias",
+        archiveQuery:
             'mediatype:(audio) AND $_portugueseFilter AND (subject:(conto) OR subject:(contos) OR title:(conto) OR title:(contos) OR title:(historinha) OR title:(história curta))',
         minSeconds: _nightTalesMinSeconds,
         maxSeconds: _nightTalesMaxSeconds,
@@ -323,12 +335,14 @@ class HomeScreenController extends GetxController {
         logLabel: "Contos da Noite",
       );
 
-  /// "Poesia Sonora": declamação de poesia em português (qualquer
-  /// país lusófono, não só Brasil), curada no Internet Archive.
+  /// "Poesia Sonora": declamação de poesia em português (qualquer país
+  /// lusófono, não só Brasil). Fonte: AudioContentService (iTunes ->
+  /// Internet Archive).
   Future<void> loadSoundPoetry() => _loadNarrativeSection(
         cacheKey: "soundPoetryCache",
         fetchedAtKey: "soundPoetryFetchedAt",
-        query:
+        itunesTerm: "poesia declamação",
+        archiveQuery:
             'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(declamação) OR subject:(declamacao) OR title:(poesia) OR title:(declamação) OR title:(declamacao) OR title:(verso))',
         minSeconds: _soundPoetryMinSeconds,
         maxSeconds: _soundPoetryMaxSeconds,
@@ -338,23 +352,31 @@ class HomeScreenController extends GetxController {
         logLabel: "Poesia Sonora",
       );
 
-  /// Helper compartilhado pelas 3 seções narrativas (Internet Archive)
-  /// acima. Implementa "cache local 1x por dia": se já existe um
-  /// resultado salvo em Hive E ele foi buscado com sucesso HOJE (mesmo
-  /// dia local do aparelho), a seção usa só o cache e nem dispara a
-  /// chamada de rede pro archive.org — é isso que elimina o load feio
-  /// que antes acontecia (quase) toda vez que o app abria, mesmo já
-  /// tendo dado certo mais cedo no mesmo dia.
+  /// Helper compartilhado pelas 3 seções narrativas acima. Duas coisas
+  /// combinadas:
   ///
-  /// Se não houver cache do dia (primeiro uso, dia mudou, ou a busca de
-  /// hoje ainda não deu certo), busca normalmente e, em caso de
-  /// sucesso, salva o resultado + o timestamp de "buscado em" pra valer
-  /// pelo resto do dia. Falha de rede ou resultado vazio nunca apaga o
-  /// que já estava na tela.
+  /// 1) Fallback Híbrido (AudioContentService): tenta iTunes primeiro,
+  ///    cai pro Internet Archive só se o iTunes falhar/não achar nada.
+  ///    Quem chama esse helper não sabe (nem precisa saber) qual das
+  ///    duas fontes respondeu.
+  /// 2) Cache local "1x por dia": se já existe um resultado salvo em
+  ///    Hive E ele foi buscado com sucesso HOJE (mesmo dia local do
+  ///    aparelho), a seção usa só o cache e nem chama
+  ///    AudioContentService — elimina o load feio que antes acontecia
+  ///    (quase) toda vez que o app abria, mesmo já tendo dado certo
+  ///    mais cedo no mesmo dia.
+  ///
+  /// Se não houver cache do dia (primeiro uso, dia mudou, ou a busca
+  /// de hoje ainda não deu certo), busca normalmente e, em caso de
+  /// sucesso, salva o resultado (já serializado como PodcastEpisode,
+  /// preservando de qual fonte veio) + o timestamp de "buscado em" pra
+  /// valer pelo resto do dia. Falha total ou resultado vazio nunca
+  /// apaga o que já estava na tela.
   Future<void> _loadNarrativeSection({
     required String cacheKey,
     required String fetchedAtKey,
-    required String query,
+    required String itunesTerm,
+    required String archiveQuery,
     required int minSeconds,
     required int maxSeconds,
     required List<MediaItem> Function() currentValue,
@@ -369,7 +391,11 @@ class HomeScreenController extends GetxController {
     final cached = appPrefs.get(cacheKey) as String?;
     if (cached != null && cached.isNotEmpty) {
       try {
-        setValue(InternetArchiveSource.decodeCachedTracks(cached));
+        final episodes = (jsonDecode(cached) as List<dynamic>)
+            .map((e) =>
+                PodcastEpisode.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+        setValue(episodes.map((ep) => ep.toTrack().toFallbackMediaItem()).toList());
       } catch (_) {}
     }
 
@@ -384,21 +410,21 @@ class HomeScreenController extends GetxController {
 
     try {
       loadingFlag.value = currentValue().isEmpty;
-      final source = InternetArchiveSource();
-      final tracks = await source
-          .searchNarratedAudio(
-            query: query,
-            minSeconds: minSeconds,
-            maxSeconds: maxSeconds,
-            resultLimit: 10,
-          )
-          .timeout(const Duration(seconds: 15), onTimeout: () => const []);
-      if (tracks.isEmpty) return; // mantém cache/valor atual na tela
-      setValue(tracks.map((t) => t.toFallbackMediaItem()).toList());
-      await appPrefs.put(cacheKey, InternetArchiveSource.encodeCachedTracks(tracks));
+      final episodes = await _audioContentService.fetchEpisodes(
+        itunesTerm: itunesTerm,
+        archiveQuery: archiveQuery,
+        minSeconds: minSeconds,
+        maxSeconds: maxSeconds,
+        resultLimit: 10,
+      );
+      if (episodes.isEmpty) return; // mantém cache/valor atual na tela
+
+      setValue(episodes.map((ep) => ep.toTrack().toFallbackMediaItem()).toList());
+      await appPrefs.put(
+          cacheKey, jsonEncode(episodes.map((e) => e.toJson()).toList()));
       await appPrefs.put(fetchedAtKey, DateTime.now().millisecondsSinceEpoch);
     } catch (e) {
-      printERROR("$logLabel (Internet Archive) not loaded due to: $e");
+      printERROR("$logLabel (AudioContentService) not loaded due to: $e");
     } finally {
       loadingFlag.value = false;
     }
