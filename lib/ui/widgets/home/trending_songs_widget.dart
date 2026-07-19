@@ -62,7 +62,8 @@ class TrendingSongsWidget extends StatelessWidget {
                           style: Theme.of(context)
                               .textTheme
                               .titleMedium
-                              ?.copyWith(fontSize: 18),
+                              ?.copyWith(
+                                  fontSize: 17, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ],
