@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../features/search/data/i_music_source.dart';
 import '../../features/search/data/sources/internet_archive_source.dart';
 import '../../features/search/data/sources/itunes_source.dart';
+import '../../features/search/data/sources/listen_notes_source.dart';
 import '../../features/search/data/sources/piped_source.dart';
 import '../../features/search/data/sources/yt_music_api_source.dart';
 import '../../features/search/domain/search_coordinator.dart';
@@ -46,19 +47,20 @@ final musicSourcesProvider = Provider<List<IMusicSource>>((ref) {
   ];
 });
 
-/// O resolver do player recebe as fontes do orquestrador + a
-/// InternetArchiveSource e a ItunesSource (usadas pelas 3 seções
-/// narrativas da Home: "Minutos de Reflexão", "Contos da Noite",
-/// "Poesia Sonora" — ver AudioContentService). Ambas ficam de fora de
-/// musicSourcesProvider de propósito — não devem participar do
-/// fallback de busca normal — mas precisam estar aqui pra o player
-/// conseguir resolver a URL de áudio quando o usuário tocar uma dessas
-/// faixas, seja ela vinda do iTunes ou do Archive.
+/// O resolver do player recebe as fontes do orquestrador + as 3 fontes
+/// do Fallback Híbrido usadas pelas seções narrativas da Home:
+/// "Minutos de Reflexão", "Contos da Noite", "Poesia Sonora" — ver
+/// AudioContentService (iTunes -> Listen Notes -> Internet Archive).
+/// Todas ficam de fora de musicSourcesProvider de propósito — não
+/// devem participar do fallback de busca normal — mas precisam estar
+/// aqui pra o player conseguir resolver a URL de áudio quando o
+/// usuário tocar uma dessas faixas, seja qual for a fonte de origem.
 final playbackResolverProvider = Provider<IPlaybackResolver>((ref) {
   return PlaybackResolver([
     ...ref.watch(musicSourcesProvider),
     InternetArchiveSource(),
     ItunesSource(),
+    ListenNotesSource(),
   ]);
 });
 
