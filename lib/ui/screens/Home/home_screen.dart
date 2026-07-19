@@ -19,6 +19,7 @@ import '../../widgets/home/recent_played_row.dart';
 import '../../widgets/home/audio_narrative_widget.dart';
 import '../../widgets/home/popular_radio_stations_widget.dart';
 import '../../widgets/home/recommended_for_you_widget.dart';
+import '../../widgets/home/trending_songs_widget.dart';
 import '../../widgets/home/recommended_list_widget.dart';
 import '../../../features/player/presentation/player_widget.dart';
 import 'home_screen_controller.dart';
@@ -215,6 +216,11 @@ class Body extends StatelessWidget {
                                         homeScreenController.recommendedForYou.value,
                                     isLoading: homeScreenController
                                         .isRecommendedForYouLoading.value)),
+                                Obx(() => TrendingSongsWidget(
+                                    content:
+                                        homeScreenController.trendingSongs.value,
+                                    isLoading: homeScreenController
+                                        .isTrendingSongsLoading.value)),
                                 Obx(() => AudioNarrativeWidget(
                                     sectionTitle: "reflectionMinutes".tr,
                                     items: homeScreenController
