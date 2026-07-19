@@ -43,12 +43,12 @@ class RecentPlayedRow extends ConsumerWidget {
                 child: Text(
                   "recentlyPlayed".tr,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontSize: 20, fontWeight: FontWeight.w800),
+                      fontSize: 17, fontWeight: FontWeight.w700),
                 ),
               ),
               const SizedBox(height: 10),
               SizedBox(
-                height: 190,
+                height: 172,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: cards.length,
@@ -74,7 +74,7 @@ class _RecentPlayedCard extends StatelessWidget {
     final playerController = Get.find<PlayerController>();
 
     return SizedBox(
-      width: 140,
+      width: 120,
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: () => playerController.playPlayListSong(
@@ -88,8 +88,8 @@ class _RecentPlayedCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ImageWidget(song: song, size: 140),
-            const SizedBox(height: 8),
+            ImageWidget(song: song, size: 120),
+            const SizedBox(height: 6),
             Text(
               song.title,
               maxLines: 1,
