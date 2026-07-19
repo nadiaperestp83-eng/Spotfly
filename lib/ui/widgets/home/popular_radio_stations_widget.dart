@@ -29,7 +29,7 @@ class PopularRadioStationsWidget extends StatelessWidget {
   final List<MediaItem> stations;
   final bool isLoading;
 
-  static const double _cardSize = 140;
+  static const double _cardSize = 120;
 
   @override
   Widget build(BuildContext context) {
@@ -44,10 +44,10 @@ class PopularRadioStationsWidget extends StatelessWidget {
             padding: const EdgeInsets.only(right: 10, bottom: 12),
             child: Text(
               "popularRadioStations".tr,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(fontSize: 20),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
             ),
           ),
           SizedBox(
