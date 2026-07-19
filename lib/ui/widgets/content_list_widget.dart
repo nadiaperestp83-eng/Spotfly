@@ -34,7 +34,10 @@ class ContentListWidget extends StatelessWidget {
                       ? "${content.title.substring(0, 12)}..."
                       : content.title,
                   //maxLines: 2,
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
                 !isHomeContent
                     ? TextButton(
@@ -51,7 +54,7 @@ class ContentListWidget extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           SizedBox(
-            height: 200,
+            height: 180,
             //color: Colors.blueAccent,
             child: Scrollbar(
               thickness: GetPlatform.isDesktop ? null : 0,
