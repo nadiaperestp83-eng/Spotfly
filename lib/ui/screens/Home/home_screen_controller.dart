@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -5,6 +7,7 @@ import 'package:hive/hive.dart';
 
 import '/models/media_Item_builder.dart';
 import '/ui/player/player_controller.dart';
+import '../../../core/models/podcast_episode.dart';
 import '../../../core/riverpod/app_provider_container.dart';
 import '../../../features/home/state/home_notifier.dart';
 import '../../../utils/update_check_flag_file.dart';
@@ -13,7 +16,7 @@ import '/models/album.dart';
 import '/models/playlist.dart';
 import '/models/quick_picks.dart';
 import '/services/music_service.dart';
-import '../../../features/search/data/sources/internet_archive_source.dart';
+import '../../../features/search/data/sources/audio_content_service.dart';
 import '../../../features/search/data/sources/jamendo_source.dart';
 import '../../../features/search/data/track_media_item_mapper.dart';
 import '../Settings/settings_screen_controller.dart';
@@ -45,13 +48,32 @@ class HomeScreenController extends GetxController {
   final popularRadioStations = <MediaItem>[].obs;
   final isPopularRadioStationsLoading = false.obs;
 
-  /// 3 seções narrativas (Internet Archive), no mesmo padrão ISOLADO
-  /// da "Estações de Rádio Popular" acima: chamada direta à
-  /// InternetArchiveSource, sem passar pelo orquestrador de busca. A
-  /// InternetArchiveSource é registrada à parte em
+  /// "Mais tocadas" (Trending/YouTube): seção FIXA na Home, sempre
+  /// visível pra todo mundo — independente do seletor "Discover" nas
+  /// Configurações. Antes, a busca de "Trending" só rodava quando o
+  /// usuário tinha esse seletor em "Trending" (contentType == "TR");
+  /// quem estava em "Quick Picks" (padrão) nunca via essa seção, e por
+  /// isso ela "sumia". Usa getCharts() do Orquestrador (mesma fonte já
+  /// usada pelo seletor), com cache local próprio (chave
+  /// "trendingSongsCache" em Hive "AppPrefs") pra mostrar algo na hora
+  /// enquanto a rede não responde — mesmo padrão de
+  /// loadRecommendedForYou logo acima.
+  final trendingSongs = QuickPicks([]).obs;
+  final isTrendingSongsLoading = false.obs;
+
+  /// 3 seções narrativas (Minutos de Reflexão, Contos da Noite, Poesia
+  /// Sonora), no mesmo padrão ISOLADO da "Estações de Rádio Popular"
+  /// acima: não passam pelo orquestrador de busca normal
+  /// (musicSourcesProvider). A fonte é o AudioContentService
+  /// ("Fallback Híbrido": iTunes Search API + RSS primeiro,
+  /// Internet Archive como fallback automático se o iTunes falhar ou
+  /// não achar nada) — ver
+  /// lib/features/search/data/sources/audio_content_service.dart.
+  /// ItunesSource e InternetArchiveSource são registradas à parte em
   /// playbackResolverProvider (ver core/providers/providers.dart) pra
   /// essas faixas conseguirem tocar no player normal do app.
-  ///
+  final AudioContentService _audioContentService = AudioContentService();
+
   /// Faixas de duração (em segundos) fáceis de ajustar depois:
   static const _reflectionMinSeconds = 150; // 2:30
   static const _reflectionMaxSeconds = 330; // 5:30
@@ -87,6 +109,7 @@ class HomeScreenController extends GetxController {
     loadContent();
     loadRecommendedForYou();
     loadPopularRadioStations();
+    loadTrendingSongs();
 
     // IMPORTANTE: loadContent() NÃO pode ser usado como sinal de "Home
     // principal pronta" — dentro dele, loadContentFromNetwork() é
@@ -235,117 +258,194 @@ class HomeScreenController extends GetxController {
     }
   }
 
+  /// Busca o chart "Trending" via getCharts() do Orquestrador e mantém
+  /// atualizado. Mostra o cache local imediatamente (sem esperar rede),
+  /// atualiza em segundo plano, e nunca sobrescreve com lista vazia —
+  /// se a rede falhar ou o chart não vier, o que já estava na tela
+  /// continua lá.
+  Future<void> loadTrendingSongs() async {
+    final appPrefs = Hive.isBoxOpen("AppPrefs")
+        ? Hive.box("AppPrefs")
+        : await Hive.openBox("AppPrefs");
+
+    final cached = appPrefs.get("trendingSongsCache") as List?;
+    if (cached != null && cached.isNotEmpty) {
+      try {
+        final cachedItems = cached
+            .map((e) => MediaItemBuilder.fromJson(Map.from(e as Map)))
+            .toList();
+        trendingSongs.value = QuickPicks(cachedItems, title: "trending".tr);
+      } catch (_) {}
+    }
+
+    try {
+      isTrendingSongsLoading.value = trendingSongs.value.songList.isEmpty;
+      final charts = await appProviderContainer
+          .read(homeNotifierProvider.notifier)
+          .getCharts();
+      final index =
+          charts.indexWhere((element) => element['title'] == "Trending");
+      if (index == -1) return; // mantém cache/valor atual na tela
+
+      final mediaItems = _extractMediaItems(charts[index]["contents"]);
+      if (mediaItems.isEmpty) return;
+
+      trendingSongs.value = QuickPicks(mediaItems, title: "trending".tr);
+      await appPrefs.put("trendingSongsCache",
+          mediaItems.map((e) => MediaItemBuilder.toJson(e)).toList());
+    } catch (e) {
+      printERROR("Mais tocadas (Trending) not loaded due to: $e");
+    } finally {
+      isTrendingSongsLoading.value = false;
+    }
+  }
+
   /// "Minutos de Reflexão": poemas/reflexões curtas (2:30-5:30) em
-  /// português, curadas no Internet Archive. Mostra cache salvo
-  /// primeiro (mesmo padrão de loadRecommendedForYou), atualiza em
-  /// segundo plano, e nunca sobrescreve com lista vazia.
-  Future<void> loadReflectionMinutes() async {
+  /// português. Mostra cache salvo primeiro (mesmo padrão de
+  /// loadRecommendedForYou), atualiza em segundo plano, e nunca
+  /// sobrescreve com lista vazia. Fonte: AudioContentService
+  /// (iTunes -> Internet Archive).
+  Future<void> loadReflectionMinutes() => _loadNarrativeSection(
+        cacheKey: "reflectionMinutesCache",
+        fetchedAtKey: "reflectionMinutesFetchedAt",
+        itunesTerm: "poesia reflexão meditação",
+        archiveQuery:
+            'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(reflexão) OR subject:(reflexao) OR title:(poema) OR title:(reflexão) OR title:(reflexao) OR title:(pensamento))',
+        minSeconds: _reflectionMinSeconds,
+        maxSeconds: _reflectionMaxSeconds,
+        currentValue: () => reflectionMinutes,
+        setValue: (v) => reflectionMinutes.value = v,
+        loadingFlag: isReflectionMinutesLoading,
+        logLabel: "Minutos de Reflexão",
+      );
+
+  /// "Contos da Noite": contos curtos (2:30-5:30) em português.
+  /// Fonte: AudioContentService (iTunes -> Internet Archive).
+  Future<void> loadNightTales() => _loadNarrativeSection(
+        cacheKey: "nightTalesCache",
+        fetchedAtKey: "nightTalesFetchedAt",
+        itunesTerm: "contos infantis histórias",
+        archiveQuery:
+            'mediatype:(audio) AND $_portugueseFilter AND (subject:(conto) OR subject:(contos) OR title:(conto) OR title:(contos) OR title:(historinha) OR title:(história curta))',
+        minSeconds: _nightTalesMinSeconds,
+        maxSeconds: _nightTalesMaxSeconds,
+        currentValue: () => nightTales,
+        setValue: (v) => nightTales.value = v,
+        loadingFlag: isNightTalesLoading,
+        logLabel: "Contos da Noite",
+      );
+
+  /// "Poesia Sonora": declamação de poesia em português (qualquer país
+  /// lusófono, não só Brasil). Fonte: AudioContentService (iTunes ->
+  /// Internet Archive).
+  Future<void> loadSoundPoetry() => _loadNarrativeSection(
+        cacheKey: "soundPoetryCache",
+        fetchedAtKey: "soundPoetryFetchedAt",
+        itunesTerm: "poesia declamação",
+        archiveQuery:
+            'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(declamação) OR subject:(declamacao) OR title:(poesia) OR title:(declamação) OR title:(declamacao) OR title:(verso))',
+        minSeconds: _soundPoetryMinSeconds,
+        maxSeconds: _soundPoetryMaxSeconds,
+        currentValue: () => soundPoetry,
+        setValue: (v) => soundPoetry.value = v,
+        loadingFlag: isSoundPoetryLoading,
+        logLabel: "Poesia Sonora",
+      );
+
+  /// Helper compartilhado pelas 3 seções narrativas acima. Duas coisas
+  /// combinadas:
+  ///
+  /// 1) Fallback Híbrido (AudioContentService): tenta iTunes primeiro,
+  ///    cai pro Internet Archive só se o iTunes falhar/não achar nada.
+  ///    Quem chama esse helper não sabe (nem precisa saber) qual das
+  ///    duas fontes respondeu.
+  /// 2) Cache local "1x por dia": se já existe um resultado salvo em
+  ///    Hive E ele foi buscado com sucesso HOJE (mesmo dia local do
+  ///    aparelho), a seção usa só o cache e nem chama
+  ///    AudioContentService — elimina o load feio que antes acontecia
+  ///    (quase) toda vez que o app abria, mesmo já tendo dado certo
+  ///    mais cedo no mesmo dia.
+  ///
+  /// Se não houver cache do dia (primeiro uso, dia mudou, ou a busca
+  /// de hoje ainda não deu certo), busca normalmente e, em caso de
+  /// sucesso, salva o resultado (já serializado como PodcastEpisode,
+  /// preservando de qual fonte veio) + o timestamp de "buscado em" pra
+  /// valer pelo resto do dia. Falha total ou resultado vazio nunca
+  /// apaga o que já estava na tela.
+  Future<void> _loadNarrativeSection({
+    required String cacheKey,
+    required String fetchedAtKey,
+    required String itunesTerm,
+    required String archiveQuery,
+    required int minSeconds,
+    required int maxSeconds,
+    required List<MediaItem> Function() currentValue,
+    required void Function(List<MediaItem> value) setValue,
+    required RxBool loadingFlag,
+    required String logLabel,
+  }) async {
     final appPrefs = Hive.isBoxOpen("AppPrefs")
         ? Hive.box("AppPrefs")
         : await Hive.openBox("AppPrefs");
 
-    final cached = appPrefs.get("reflectionMinutesCache") as String?;
+    final cached = appPrefs.get(cacheKey) as String?;
     if (cached != null && cached.isNotEmpty) {
       try {
-        reflectionMinutes.value = InternetArchiveSource.decodeCachedTracks(cached);
+        final episodes = (jsonDecode(cached) as List<dynamic>)
+            .map((e) =>
+                PodcastEpisode.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+        setValue(episodes.map((ep) => ep.toTrack().toFallbackMediaItem()).toList());
       } catch (_) {}
     }
 
+    final fetchedAtMillis = appPrefs.get(fetchedAtKey) as int?;
+    if (currentValue().isNotEmpty &&
+        fetchedAtMillis != null &&
+        _isSameLocalDay(fetchedAtMillis)) {
+      // Já buscamos com sucesso hoje: fica só no cache, sem rede.
+      loadingFlag.value = false;
+      return;
+    }
+
     try {
-      isReflectionMinutesLoading.value = reflectionMinutes.isEmpty;
-      final source = InternetArchiveSource();
-      final tracks = await source
-          .searchNarratedAudio(
-            query:
-                'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(reflexão) OR subject:(reflexao) OR title:(poema) OR title:(reflexão) OR title:(reflexao) OR title:(pensamento))',
-            minSeconds: _reflectionMinSeconds,
-            maxSeconds: _reflectionMaxSeconds,
-            resultLimit: 10,
-          )
-          .timeout(const Duration(seconds: 15), onTimeout: () => const []);
-      if (tracks.isEmpty) return; // mantém cache/valor atual na tela
-      reflectionMinutes.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
+      loadingFlag.value = currentValue().isEmpty;
+      final episodes = await _audioContentService.fetchEpisodes(
+        itunesTerm: itunesTerm,
+        archiveQuery: archiveQuery,
+        minSeconds: minSeconds,
+        maxSeconds: maxSeconds,
+        resultLimit: 10,
+      );
+      if (episodes.isEmpty) return; // mantém cache/valor atual na tela
+
+      setValue(episodes.map((ep) => ep.toTrack().toFallbackMediaItem()).toList());
       await appPrefs.put(
-          "reflectionMinutesCache", InternetArchiveSource.encodeCachedTracks(tracks));
+          cacheKey, jsonEncode(episodes.map((e) => e.toJson()).toList()));
+      await appPrefs.put(fetchedAtKey, DateTime.now().millisecondsSinceEpoch);
     } catch (e) {
-      printERROR("Minutos de Reflexão (Internet Archive) not loaded due to: $e");
+      printERROR("$logLabel (AudioContentService) not loaded due to: $e");
     } finally {
-      isReflectionMinutesLoading.value = false;
+      loadingFlag.value = false;
     }
   }
 
-  /// "Contos da Noite": contos curtos (2:30-5:30) em português,
-  /// curados no Internet Archive.
-  Future<void> loadNightTales() async {
-    final appPrefs = Hive.isBoxOpen("AppPrefs")
-        ? Hive.box("AppPrefs")
-        : await Hive.openBox("AppPrefs");
-
-    final cached = appPrefs.get("nightTalesCache") as String?;
-    if (cached != null && cached.isNotEmpty) {
-      try {
-        nightTales.value = InternetArchiveSource.decodeCachedTracks(cached);
-      } catch (_) {}
-    }
-
-    try {
-      isNightTalesLoading.value = nightTales.isEmpty;
-      final source = InternetArchiveSource();
-      final tracks = await source
-          .searchNarratedAudio(
-            query:
-                'mediatype:(audio) AND $_portugueseFilter AND (subject:(conto) OR subject:(contos) OR title:(conto) OR title:(contos) OR title:(historinha) OR title:(história curta))',
-            minSeconds: _nightTalesMinSeconds,
-            maxSeconds: _nightTalesMaxSeconds,
-            resultLimit: 10,
-          )
-          .timeout(const Duration(seconds: 15), onTimeout: () => const []);
-      if (tracks.isEmpty) return;
-      nightTales.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
-      await appPrefs.put(
-          "nightTalesCache", InternetArchiveSource.encodeCachedTracks(tracks));
-    } catch (e) {
-      printERROR("Contos da Noite (Internet Archive) not loaded due to: $e");
-    } finally {
-      isNightTalesLoading.value = false;
-    }
+  /// Compara se um timestamp (ms desde epoch) cai no mesmo dia local
+  /// (ano/mês/dia) que "agora". Usado pelo cache "1x por dia" acima.
+  bool _isSameLocalDay(int millis) {
+    final last = DateTime.fromMillisecondsSinceEpoch(millis);
+    final now = DateTime.now();
+    return last.year == now.year &&
+        last.month == now.month &&
+        last.day == now.day;
   }
 
-  /// "Poesia Sonora": declamação de poesia em português (qualquer
-  /// país lusófono, não só Brasil), curada no Internet Archive.
-  Future<void> loadSoundPoetry() async {
-    final appPrefs = Hive.isBoxOpen("AppPrefs")
-        ? Hive.box("AppPrefs")
-        : await Hive.openBox("AppPrefs");
-
-    final cached = appPrefs.get("soundPoetryCache") as String?;
-    if (cached != null && cached.isNotEmpty) {
-      try {
-        soundPoetry.value = InternetArchiveSource.decodeCachedTracks(cached);
-      } catch (_) {}
-    }
-
-    try {
-      isSoundPoetryLoading.value = soundPoetry.isEmpty;
-      final source = InternetArchiveSource();
-      final tracks = await source
-          .searchNarratedAudio(
-            query:
-                'mediatype:(audio) AND $_portugueseFilter AND (subject:(poesia) OR subject:(declamação) OR subject:(declamacao) OR title:(poesia) OR title:(declamação) OR title:(declamacao) OR title:(verso))',
-            minSeconds: _soundPoetryMinSeconds,
-            maxSeconds: _soundPoetryMaxSeconds,
-            resultLimit: 10,
-          )
-          .timeout(const Duration(seconds: 15), onTimeout: () => const []);
-      if (tracks.isEmpty) return;
-      soundPoetry.value = tracks.map((t) => t.toFallbackMediaItem()).toList();
-      await appPrefs.put(
-          "soundPoetryCache", InternetArchiveSource.encodeCachedTracks(tracks));
-    } catch (e) {
-      printERROR("Poesia Sonora (Internet Archive) not loaded due to: $e");
-    } finally {
-      isSoundPoetryLoading.value = false;
-    }
+  List<MediaItem> _extractMediaItems(dynamic contents) {
+    if (contents == null) return [];
+    final list = contents as List;
+    // Filtra apenas os itens que já são MediaItem
+    final mediaItems = list.whereType<MediaItem>().toList();
+    return mediaItems;
   }
 
   Future<void> loadContent() async {
@@ -396,20 +496,6 @@ class HomeScreenController extends GetxController {
     } else {
       return false;
     }
-  }
-
-  // ========== CORREÇÃO PRINCIPAL ==========
-  // Função auxiliar para extrair com segurança uma lista de MediaItem
-  // a partir de uma lista que pode conter outros tipos (Playlist, Album, etc.)
-  List<MediaItem> _extractMediaItems(dynamic contents) {
-    if (contents == null) return [];
-    final list = contents as List;
-    // Filtra apenas os itens que já são MediaItem
-    final mediaItems = list.whereType<MediaItem>().toList();
-    // Se não houver nenhum MediaItem, tenta converter de outros tipos?
-    // Por ora, retorna apenas os que já são MediaItem.
-    // Você pode adicionar lógica para converter Playlist/Album se necessário.
-    return mediaItems;
   }
 
   Future<void> loadContentFromNetwork({bool silent = false}) async {
@@ -576,7 +662,6 @@ class HomeScreenController extends GetxController {
     return contentTemp;
   }
 
-  // ========== CORREÇÃO NO changeDiscoverContent ==========
   Future<void> changeDiscoverContent(dynamic val, {String? songId}) async {
     QuickPicks? quickPicks_;
     if (val == 'QP') {
