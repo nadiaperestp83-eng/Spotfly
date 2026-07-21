@@ -15,7 +15,10 @@ import '/ui/widgets/link_piped.dart';
 import '/services/music_service.dart';
 import '/ui/player/player_controller.dart';
 import '/ui/utils/theme_controller.dart';
+import 'package:google_fonts/google_fonts.dart';
+
 import 'components/custom_expansion_tile.dart';
+import 'components/ios_grouped_section.dart';
 import 'settings_screen_controller.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -27,25 +30,36 @@ class SettingsScreen extends StatelessWidget {
     final settingsController = Get.find<SettingsScreenController>();
     final topPadding = context.isLandscape ? 50.0 : 90.0;
     final isDesktop = GetPlatform.isDesktop;
-    return Padding(
-      padding: isBottomNavActive
-          ? EdgeInsets.only(left: 20, top: topPadding, right: 15)
-          : EdgeInsets.only(top: topPadding, left: 5, right: 5),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              "settings".tr,
-              style: Theme.of(context).textTheme.titleLarge,
+    return Container(
+      // Fundo da tela no padrão "Ajustes" do iOS.
+      color: const Color(0xFFF2F2F7),
+      child: Padding(
+        padding: isBottomNavActive
+            ? EdgeInsets.only(left: 20, top: topPadding, right: 15)
+            : EdgeInsets.only(top: topPadding, left: 16, right: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  "settings".tr,
+                  style: GoogleFonts.inter(
+                    fontSize: 34,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
             ),
-          ),
-          Expanded(
-              child: ListView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.only(bottom: 200, top: 20),
-            children: [
+            Expanded(
+                child: ListView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 200, top: 4),
+              children: [
               Obx(
                 () => settingsController.isNewVersionAvailable.value
                     ? Padding(
@@ -84,7 +98,10 @@ class SettingsScreen extends StatelessWidget {
                       )
                     : const SizedBox.shrink(),
               ),
+              IosGroupedSection(
+                children: [
               CustomExpansionTile(
+                accentColor: kiTunesAccentColors[0],
                 title: "personalisation".tr,
                 icon: Icons.palette,
                 children: [
@@ -205,6 +222,7 @@ class SettingsScreen extends StatelessWidget {
                 ],
               ),
               CustomExpansionTile(
+                  accentColor: kiTunesAccentColors[1],
                   title: "content".tr,
                   icon: Icons.music_video,
                   children: [
@@ -330,6 +348,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ]),
               CustomExpansionTile(
+                accentColor: kiTunesAccentColors[2],
                 title: "music&Playback".tr,
                 icon: Icons.music_note,
                 children: [
@@ -505,7 +524,12 @@ class SettingsScreen extends StatelessWidget {
                       : const SizedBox.shrink(),
                 ],
               ),
+              ]),
+              const SizedBox(height: 20),
+              IosGroupedSection(
+                children: [
               CustomExpansionTile(
+                accentColor: kiTunesAccentColors[3],
                 title: "download".tr,
                 icon: Icons.download,
                 children: [
@@ -599,6 +623,7 @@ class SettingsScreen extends StatelessWidget {
                 ],
               ),
               CustomExpansionTile(
+                  accentColor: kiTunesAccentColors[4],
                   title: "${"backup".tr} & ${"restore".tr}",
                   icon: Icons.restore,
                   children: [
@@ -631,7 +656,12 @@ class SettingsScreen extends StatelessWidget {
                           () => Get.delete<RestoreDialogController>()),
                     ),
                   ]),
+              ]),
+              const SizedBox(height: 20),
+              IosGroupedSection(
+                children: [
               CustomExpansionTile(
+                accentColor: kiTunesAccentColors[5],
                   icon: Icons.miscellaneous_services,
                   title: "misc".tr,
                   children: [
@@ -655,6 +685,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ]),
               CustomExpansionTile(
+                accentColor: kiTunesAccentColors[6],
                   icon: Icons.vpn_lock,
                   title: "proxy".tr,
                   children: [
@@ -687,7 +718,12 @@ class SettingsScreen extends StatelessWidget {
                       ),
                     ),
                   ]),
+              ]),
+              const SizedBox(height: 20),
+              IosGroupedSection(
+                children: [
               CustomExpansionTile(
+                accentColor: kiTunesAccentColors[7],
                 icon: Icons.info,
                 title: "appInfo".tr,
                 children: [
@@ -723,6 +759,7 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ],
               )
+              ]),
             ],
           )),
           Padding(
@@ -733,6 +770,7 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
