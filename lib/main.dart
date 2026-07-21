@@ -127,10 +127,14 @@ void _setAppInitPrefs() {
   final appPrefs = Hive.box("AppPrefs");
   if (appPrefs.isEmpty) {
     appPrefs.putAll({
-      // 2 = ThemeType.dark: usa o tema premium fixo (grafite profundo +
-      // accent verde) em vez do ThemeType.dynamic (index 0), que extrai
-      // cores pastéis da capa do álbum e deixa o app "lavado".
-      'themeModeType': 2,
+      // 3 = ThemeType.light: tema fixo "estilo Apple Music/iOS" (fundo
+      // agrupado claro + accent vermelho) é o padrão para instalação nova,
+      // em vez do ThemeType.dynamic (index 0), que extrai cores pastéis
+      // da capa do álbum, ou do ThemeType.dark (index 2). Só entra em
+      // instalação nova (appPrefs.isEmpty) — quem já tem o app instalado
+      // e já escolheu um tema não é afetado. A troca continua só
+      // acontecendo manualmente em Settings.
+      'themeModeType': 3,
       "cacheSongs": false,
       "skipSilenceEnabled": false,
       'streamingQuality': 1,
