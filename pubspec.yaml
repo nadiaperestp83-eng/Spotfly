@@ -67,7 +67,7 @@ dependencies:
   youtube_explode_dart:
     git:
       url: https://github.com/gokadzev/Musify.git
-      ref: master
+      ref: d70d9a446754ec5f96c6afee9419740dc77bc9a5
       path: packages/youtube_explode_dart
 
 
