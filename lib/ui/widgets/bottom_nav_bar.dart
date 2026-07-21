@@ -3,7 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:harmonymusic/ui/screens/Home/home_screen_controller.dart';
-import 'package:harmonymusic/ui/utils/theme_controller.dart' show kAccentColor;
+import 'package:harmonymusic/ui/utils/theme_controller.dart'
+    show kAccentColor, kAppleAccentColor;
 
 /// Altura da pílula em si (sem margens/safe-area). Mantida em constante
 /// para reaproveitar em `ScrollToHideWidget` (home.dart), evitando números
@@ -72,6 +73,28 @@ class BottomNavBar extends StatelessWidget {
     // dinamicamente com o inset do dispositivo.
     final gestureInset = MediaQuery.of(context).viewPadding.bottom;
 
+    // O tema "light" (Ajustes/Apple Music) é o único com
+    // `brightness: Brightness.light` (ver theme_controller.dart); os temas
+    // "dark" e "dynamic" usam Brightness.dark. É esse flag que decide o
+    // "look" da navbar — sem depender de nenhum estado próprio aqui.
+    final isLightTheme = Theme.of(context).brightness == Brightness.light;
+
+    // Cor de destaque do item selecionado: vermelho/rosa "iTunes Music"
+    // no tema light/iOS; verde (Spotify) nos temas dark/dynamic — mantido
+    // de propósito para não mexer no visual desses dois temas agora.
+    final selectedColor = isLightTheme ? kAppleAccentColor : kAccentColor;
+    final unselectedColor =
+        isLightTheme ? Colors.black45 : Colors.white60;
+
+    // Vidro fosco: branco no tema light (não mais preto fixo), preto no
+    // dark/dynamic — mesmo efeito de blur, só troca a base de cor.
+    final glassColor = isLightTheme
+        ? Colors.white.withOpacity(0.75)
+        : const Color(0xFF121212).withOpacity(0.85);
+    final glassBorderColor = isLightTheme
+        ? Colors.black.withOpacity(0.08)
+        : Colors.white.withOpacity(0.10);
+
     return Padding(
       padding: EdgeInsets.fromLTRB(
         kFloatingNavBarHorizontalMargin,
@@ -86,10 +109,10 @@ class BottomNavBar extends StatelessWidget {
           child: Container(
             height: kFloatingNavBarHeight,
             decoration: BoxDecoration(
-              color: const Color(0xFF121212).withOpacity(0.85),
+              color: glassColor,
               borderRadius: BorderRadius.circular(30),
               border: Border.all(
-                color: Colors.white.withOpacity(0.10),
+                color: glassBorderColor,
                 width: 0.6,
               ),
             ),
@@ -116,8 +139,9 @@ class BottomNavBar extends StatelessWidget {
                               Icon(
                                 selected ? item.selectedIcon : item.icon,
                                 size: 22,
-                                color:
-                                    selected ? kAccentColor : Colors.white60,
+                                color: selected
+                                    ? selectedColor
+                                    : unselectedColor,
                               ),
                               const SizedBox(height: 3),
                               Text(
@@ -130,8 +154,8 @@ class BottomNavBar extends StatelessWidget {
                                       ? FontWeight.w700
                                       : FontWeight.w500,
                                   color: selected
-                                      ? kAccentColor
-                                      : Colors.white60,
+                                      ? selectedColor
+                                      : unselectedColor,
                                 ),
                               ),
                             ],
