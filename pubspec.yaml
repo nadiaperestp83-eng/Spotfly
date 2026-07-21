@@ -65,10 +65,11 @@ dependencies:
   http: ^1.2.2
   webfeed_plus: ^1.0.1
   youtube_explode_dart:
-  git:
-    url: https://github.com/gokadzev/Musify.git
-    ref: master
-    path: packages/youtube_explode_dart
+    git:
+      url: https://github.com/gokadzev/Musify.git
+      ref: master
+      path: packages/youtube_explode_dart
+
 
   # yt_flutter_musicapi: ^3.4.4   # <-- REMOVIDO
 
