@@ -249,18 +249,38 @@ class MusicServices extends getx.GetxService {
 
   Future<List<Map<String, dynamic>>> getHome({int limit = 4}) async {
     final result = <Map<String, dynamic>>[];
+    // ===== DIAGNÓSTICO TEMPORÁRIO =====
+    // printERROR é no-op em release (helper.dart), então o motivo real
+    // de cada busca falhar nunca chegava até você. Guardo aqui pra
+    // mostrar num snackbar visível na tela, sem precisar de
+    // adb/computador. ME AVISE quando já tiver visto pra eu remover.
+    final List<String> debugErrors = [];
+    // ===== FIM DIAGNÓSTICO TEMPORÁRIO (declaração) =====
     for (final query in _homeSeedQueries.take(limit)) {
       try {
         final videos = await _withFallback((yt) => yt.search.search(query));
         final items = videos.take(15).map(_mapFromVideo).toList();
         if (items.isNotEmpty) {
           result.add({'title': _titleCase(query), 'contents': items});
+        } else {
+          debugErrors.add('"$query" -> 0 resultados'); // DIAGNÓSTICO TEMPORÁRIO
         }
       } catch (e) {
         printERROR("❌ Erro ao montar seção Home '$query': $e");
+        debugErrors.add('"$query" -> ERRO: $e'); // DIAGNÓSTICO TEMPORÁRIO
       }
     }
     printINFO("📊 Home retornou ${result.length} seções");
+    // ===== DIAGNÓSTICO TEMPORÁRIO =====
+    if (result.isEmpty && debugErrors.isNotEmpty) {
+      getx.Get.snackbar(
+        'DEBUG: getHome() falhou',
+        debugErrors.join('  |  '),
+        duration: const Duration(seconds: 20),
+        isDismissible: true,
+      );
+    }
+    // ===== FIM DIAGNÓSTICO TEMPORÁRIO =====
     return result;
   }
 
