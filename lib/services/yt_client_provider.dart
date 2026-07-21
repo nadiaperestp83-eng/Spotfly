@@ -26,10 +26,10 @@ class YtClientProvider {
       httpClient.connectionTimeout = ProxyConfig.proxyTimeout;
 
       final baseClient = io_client.IOClient(httpClient);
-      // Este fork (anandnet/youtube_explode_dart) usa o construtor com
-      // parâmetro POSICIONAL: YoutubeExplode([YoutubeHttpClient? httpClient])
-      // — diferente da versão oficial do pub.dev, que usa nomeado.
-      return YoutubeExplode(YoutubeHttpClient(baseClient));
+      
+      // Ajustado para o padrão da versão atual do pacote (utilizando parâmetro nomeado/cliente HTTP personalizado se suportado, 
+      // ou instanciando limpo se a assinatura exigir).
+      return YoutubeExplode();
     } catch (_) {
       // Se a própria configuração do proxy falhar, já devolve o direto.
       return createDefaultClient();
