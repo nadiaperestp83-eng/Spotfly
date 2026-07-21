@@ -615,6 +615,26 @@ class HomeScreenController extends GetxController {
       middleContent.value = _setContentList(middleContentTemp);
       fixedContent.value = _setContentList(homeContentListMap);
 
+      // ===== DIAGNÓSTICO TEMPORÁRIO =====
+      // printINFO/printERROR (helper.dart) são no-op em release
+      // (`if (kReleaseMode) return;`), e o build que você usa
+      // (build-unsigned.yml) é `flutter build apk --release` — ou
+      // seja, eles NUNCA apareceriam pra você, nem via logcat. Por
+      // isso uso um snackbar visível na tela mesmo, só dessa vez, pra
+      // a gente ver os números reais sem precisar de adb/computador.
+      // ME AVISE quando já tiver visto o resultado que eu removo isso.
+      Get.snackbar(
+        'DEBUG: Home content',
+        'contentType=$contentType | rawHome=${rawHome.length} | '
+        'quickPicks=${quickPicks.value.songList.length} | '
+        'middleContent=${middleContent.length} | '
+        'fixedContent=${fixedContent.length} | '
+        'titles=${homeContentListMap.map((e) => e['title']).toList()}',
+        duration: const Duration(seconds: 12),
+        isDismissible: true,
+      );
+      // ===== FIM DIAGNÓSTICO TEMPORÁRIO =====
+
       isContentFetched.value = true;
 
       cachedHomeScreenData(updateAll: true);
