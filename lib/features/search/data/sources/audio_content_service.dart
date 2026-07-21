@@ -13,14 +13,17 @@ import 'listen_notes_source.dart';
 /// sem nenhum fallback — continua exatamente como está.
 ///
 /// Estratégia de prioridade (3 níveis):
-/// 1º ItunesSource (iTunes Search API -> feedUrl -> parse do RSS via
-///    webfeed_plus). Timeout curto (5s) cobrindo a tentativa inteira.
-/// 2º ListenNotesSource (Listen Notes /search, type=episode — já
-///    devolve o episódio pronto, sem precisar de RSS). Só entra em
-///    ação se o iTunes falhar/não achar nada. Se a chave
+/// 1º ListenNotesSource (Listen Notes /search, type=episode — devolve
+///    o episódio pronto numa chamada só, sem precisar baixar/parsear
+///    RSS). Timeout curto (4s): é uma chamada única e simples, não
+///    precisa de tanta folga quanto o iTunes. Se a chave
 ///    LISTENNOTES_API_KEY não estiver configurada no build, essa
 ///    fonte já se auto-desativa (devolve vazio na hora, sem tentar
-///    rede) e cai direto pro passo 3.
+///    rede) e cai direto pro passo 2.
+/// 2º ItunesSource (iTunes Search API -> feedUrl -> parse do RSS via
+///    webfeed_plus). Só entra em ação se o Listen Notes falhar/não
+///    achar nada. Timeout maior (6s), cobrindo a tentativa inteira
+///    (busca + download/parse do feed candidato).
 /// 3º InternetArchiveSource (lógica já existente, sem nenhuma
 ///    mudança) — última rede de segurança, só se as duas anteriores
 ///    falharem de verdade.
@@ -41,14 +44,15 @@ class AudioContentService {
   final ListenNotesSource _listenNotesSource;
   final InternetArchiveSource _archiveSource;
 
-  /// Cobre a tentativa completa do iTunes (busca + download/parse dos
-  /// feeds RSS candidatos). Estourou o prazo -> trata como falha e
-  /// vai pro próximo nível (Listen Notes) na hora, sem esperar mais.
-  static const _itunesOverallTimeout = Duration(seconds: 5);
+  /// Timeout do 1º nível (Listen Notes) — chamada única e simples
+  /// (sem download/parse de RSS), por isso mais curto que o do iTunes.
+  static const _listenNotesTimeout = Duration(seconds: 4);
 
-  /// Timeout do 2º nível (Listen Notes) — chamada única e simples,
-  /// não precisa de tanto tempo quanto o iTunes (que baixa RSS).
-  static const _listenNotesTimeout = Duration(seconds: 6);
+  /// Cobre a tentativa completa do iTunes (busca + download/parse dos
+  /// feeds RSS candidatos), agora como 2º nível/fallback. Estourou o
+  /// prazo -> trata como falha e vai pro Internet Archive na hora,
+  /// sem esperar mais.
+  static const _itunesOverallTimeout = Duration(seconds: 6);
 
   /// Timeout do 3º nível/último fallback (Internet Archive). SEM
   /// isso, se o archive.org ficar lento/instável, a seção fica
@@ -75,7 +79,24 @@ class AudioContentService {
     int resultLimit = 10,
     String itunesCountry = 'BR',
   }) async {
-    // 1º nível: iTunes.
+    // 1º nível: Listen Notes.
+    try {
+      final listenNotesEpisodes = await _listenNotesSource
+          .searchPodcastEpisodes(
+            searchTerm: itunesTerm,
+            minSeconds: minSeconds,
+            maxSeconds: maxSeconds,
+            resultLimit: resultLimit,
+          )
+          .timeout(_listenNotesTimeout, onTimeout: () => const []);
+
+      if (listenNotesEpisodes.isNotEmpty) return listenNotesEpisodes;
+    } catch (e) {
+      printERROR(
+          'AudioContentService: Listen Notes falhou, tentando iTunes: $e');
+    }
+
+    // 2º nível: iTunes.
     try {
       final itunesEpisodes = await _itunesSource
           .searchPodcastEpisodes(
@@ -90,24 +111,7 @@ class AudioContentService {
       if (itunesEpisodes.isNotEmpty) return itunesEpisodes;
     } catch (e) {
       printERROR(
-          'AudioContentService: iTunes falhou, tentando Listen Notes: $e');
-    }
-
-    // 2º nível: Listen Notes.
-    try {
-      final listenNotesEpisodes = await _listenNotesSource
-          .searchPodcastEpisodes(
-            searchTerm: itunesTerm,
-            minSeconds: minSeconds,
-            maxSeconds: maxSeconds,
-            resultLimit: resultLimit,
-          )
-          .timeout(_listenNotesTimeout, onTimeout: () => const []);
-
-      if (listenNotesEpisodes.isNotEmpty) return listenNotesEpisodes;
-    } catch (e) {
-      printERROR(
-          'AudioContentService: Listen Notes falhou, caindo pro Internet Archive: $e');
+          'AudioContentService: iTunes falhou, caindo pro Internet Archive: $e');
     }
 
     // 3º nível (última rede de segurança): Internet Archive, lógica já
