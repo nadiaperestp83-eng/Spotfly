@@ -66,9 +66,9 @@ dependencies:
   webfeed_plus: ^1.0.1
   youtube_explode_dart:
     git:
-      url: https://github.com/gokadzev/Musify.git
+      url: https://github.com/SimformSolutionsPvtLtd/youtube_explode_dart.git
       ref: master
-      path: packages/youtube_explode_dart
+
 
 
 
