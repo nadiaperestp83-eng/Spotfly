@@ -142,7 +142,7 @@ class HomeScreenController extends GetxController {
   /// entre si) — reduz ainda mais o pico de requisições simultâneas ao
   /// Internet Archive numa conexão móvel.
   Future<void> _loadNarrativeSectionsSequentially() async {
-    await loadReflectionMinutes();
+    await loadRitmosDoMundo();
     await loadNightTales();
     await loadSoundPoetry();
   }
@@ -298,6 +298,79 @@ class HomeScreenController extends GetxController {
     } finally {
       isTrendingSongsLoading.value = false;
     }
+  }
+
+  /// "Ritmos do Mundo": carrossel horizontal de músicas REAIS do YouTube
+  /// (mesmo motor de busca da seção "Mais tocadas"/da tela de busca —
+  /// MusicServices.search, que usa youtube_explode por baixo), buscando
+  /// por palavras-chave de estilos/culturas que não costumam aparecer
+  /// nos feeds "top hits" comuns. SUBSTITUI "Minutos de Reflexão" nessa
+  /// posição da Home — loadReflectionMinutes/reflectionMinutes acima
+  /// continuam definidos (não foram apagados), só não são mais chamados
+  /// em _loadNarrativeSectionsSequentially().
+  static const List<String> _ritmosDoMundoKeywords = [
+    'música árabe',
+    'música cigana',
+    'flamenco',
+    'dabke',
+    'tango',
+    'música italiana',
+    'fado',
+  ];
+
+  final ritmosDoMundo = <MediaItem>[].obs;
+  final isRitmosDoMundoLoading = true.obs;
+
+  /// Roda 1 busca por palavra-chave (sequencial, não em paralelo — mesmo
+  /// cuidado de taxa de requisições dos outros carrosséis) e junta os
+  /// resultados de todas num carrossel só. Mostra o cache local primeiro
+  /// (mesmo padrão de loadTrendingSongs), nunca sobrescreve com lista
+  /// vazia se a busca falhar.
+  Future<void> loadRitmosDoMundo() async {
+    final appPrefs = Hive.isBoxOpen("AppPrefs")
+        ? Hive.box("AppPrefs")
+        : await Hive.openBox("AppPrefs");
+
+    final cached = appPrefs.get("ritmosDoMundoCache") as List?;
+    if (cached != null && cached.isNotEmpty) {
+      try {
+        final cachedItems = cached
+            .map((e) => MediaItemBuilder.fromJson(Map.from(e as Map)))
+            .toList();
+        ritmosDoMundo.value = cachedItems;
+      } catch (_) {}
+    }
+
+    isRitmosDoMundoLoading.value = ritmosDoMundo.value.isEmpty;
+    final collected = <MediaItem>[];
+    for (final keyword in _ritmosDoMundoKeywords) {
+      try {
+        final result = await _musicServices.search(keyword, limit: 4);
+        final songs = (result['Songs'] as List?) ?? [];
+        for (final raw in songs) {
+          try {
+            final map = Map<String, dynamic>.from(raw as Map);
+            final thumbs = map['thumbnails'] as List?;
+            if (thumbs == null || thumbs.isEmpty) continue; // sem capa: pula
+            collected.add(MediaItemBuilder.fromJson(map));
+          } catch (_) {
+            continue; // 1 item malformado não derruba a seção inteira
+          }
+        }
+      } catch (e) {
+        printERROR("Ritmos do Mundo: falha ao buscar '$keyword': $e");
+      }
+    }
+
+    if (collected.isEmpty) {
+      isRitmosDoMundoLoading.value = false;
+      return; // mantém cache/valor atual na tela
+    }
+
+    ritmosDoMundo.value = collected;
+    await appPrefs.put("ritmosDoMundoCache",
+        collected.map((e) => MediaItemBuilder.toJson(e)).toList());
+    isRitmosDoMundoLoading.value = false;
   }
 
   /// "Minutos de Reflexão": poemas/reflexões curtas (2:30-5:30) em
