@@ -26,21 +26,27 @@ class IosGroupedSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Antes o card era sempre branco puro, mesmo no Dark; agora usa a cor
+    // de card do tema ativo (branco no light, kSurfaceElevated no dark).
+    final cardColor = Theme.of(context).cardColor;
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        color: Colors.white,
+        color: cardColor,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             for (int i = 0; i < children.length; i++) ...[
               children[i],
               if (i != children.length - 1)
-                const Divider(
+                Divider(
                   height: 1,
                   thickness: 0.5,
                   indent: 50,
-                  color: Color(0xFFC6C6C8),
+                  color: isLight
+                      ? const Color(0xFFC6C6C8)
+                      : Colors.white.withOpacity(0.12),
                 ),
             ],
           ],
