@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:harmonymusic/ui/widgets/loader.dart';
 import 'package:harmonymusic/ui/widgets/search_related_widgets.dart';
+import 'package:harmonymusic/ui/utils/theme_controller.dart'
+    show kAccentGradient, isExactDarkTheme;
 
 import '../../navigator.dart';
 import '../../widgets/separate_tab_item_widget.dart';
@@ -92,6 +94,10 @@ class SearchResultScreenBN extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context, SearchResultScreenController c) {
+    // Só o ThemeType.dark ganha o gradiente verde→rosa Apple Music nos pills
+    // não selecionados (Songs/Artists/Featured Playlists); light/dynamic
+    // mantêm exatamente o visual de antes.
+    final useGradient = isExactDarkTheme(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -101,8 +107,23 @@ class SearchResultScreenBN extends StatelessWidget {
             onTap: c.onDestinationSelected,
             controller: c.tabController,
             contentPadding: const EdgeInsets.only(left: 15, right: 15),
-            backgroundColor: Theme.of(context).textTheme.titleMedium?.color!,
-            unselectedBackgroundColor: Theme.of(context).colorScheme.secondary,
+            backgroundColor:
+                useGradient ? null : Theme.of(context).textTheme.titleMedium?.color!,
+            decoration: useGradient
+                ? BoxDecoration(
+                    color: Theme.of(context).textTheme.titleMedium?.color,
+                    borderRadius: BorderRadius.circular(7),
+                  )
+                : null,
+            unselectedBackgroundColor: useGradient
+                ? null
+                : Theme.of(context).colorScheme.secondary,
+            unselectedDecoration: useGradient
+                ? BoxDecoration(
+                    gradient: kAccentGradient,
+                    borderRadius: BorderRadius.circular(7),
+                  )
+                : null,
             borderWidth: 0,
             buttonMargin: const EdgeInsets.only(
                 right: 10, left: 4, top: 4, bottom: 4),
