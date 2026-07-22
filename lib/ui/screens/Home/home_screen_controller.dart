@@ -110,6 +110,13 @@ class HomeScreenController extends GetxController {
     loadRecommendedForYou();
     loadPopularRadioStations();
     loadTrendingSongs();
+    // Ritmos do Mundo é YouTube direto (mesma "arquitetura" da seção Mais
+    // tocadas: MusicServices.search sem passar pelo Orquestrador/gate de
+    // narrativas), então dispara aqui, na hora que o app abre — não deve
+    // esperar isContentFetched nem o fallback de 15s da fila narrativa
+    // (isso é só pras seções de Internet Archive, que são mais lentas por
+    // natureza e por isso têm essa rede de segurança).
+    loadRitmosDoMundo();
 
     // IMPORTANTE: loadContent() NÃO pode ser usado como sinal de "Home
     // principal pronta" — dentro dele, loadContentFromNetwork() é
@@ -142,7 +149,6 @@ class HomeScreenController extends GetxController {
   /// entre si) — reduz ainda mais o pico de requisições simultâneas ao
   /// Internet Archive numa conexão móvel.
   Future<void> _loadNarrativeSectionsSequentially() async {
-    await loadRitmosDoMundo();
     await loadNightTales();
     await loadSoundPoetry();
   }
@@ -321,11 +327,12 @@ class HomeScreenController extends GetxController {
   final ritmosDoMundo = <MediaItem>[].obs;
   final isRitmosDoMundoLoading = true.obs;
 
-  /// Roda 1 busca por palavra-chave (sequencial, não em paralelo — mesmo
-  /// cuidado de taxa de requisições dos outros carrosséis) e junta os
-  /// resultados de todas num carrossel só. Mostra o cache local primeiro
-  /// (mesmo padrão de loadTrendingSongs), nunca sobrescreve com lista
-  /// vazia se a busca falhar.
+  /// Dispara as buscas de todas as palavras-chave em PARALELO
+  /// (Future.wait) — mesma "arquitetura" da seção Mais tocadas: direto
+  /// no onInit(), sem fila/gate, aparecendo assim que o app abre. Junta
+  /// os resultados de todas num carrossel só. Mostra o cache local
+  /// primeiro (mesmo padrão de loadTrendingSongs), nunca sobrescreve com
+  /// lista vazia se a busca falhar.
   Future<void> loadRitmosDoMundo() async {
     final appPrefs = Hive.isBoxOpen("AppPrefs")
         ? Hive.box("AppPrefs")
@@ -342,8 +349,9 @@ class HomeScreenController extends GetxController {
     }
 
     isRitmosDoMundoLoading.value = ritmosDoMundo.value.isEmpty;
-    final collected = <MediaItem>[];
-    for (final keyword in _ritmosDoMundoKeywords) {
+
+    Future<List<MediaItem>> searchKeyword(String keyword) async {
+      final items = <MediaItem>[];
       try {
         final result = await _musicServices.search(keyword, limit: 4);
         final songs = (result['Songs'] as List?) ?? [];
@@ -352,7 +360,7 @@ class HomeScreenController extends GetxController {
             final map = Map<String, dynamic>.from(raw as Map);
             final thumbs = map['thumbnails'] as List?;
             if (thumbs == null || thumbs.isEmpty) continue; // sem capa: pula
-            collected.add(MediaItemBuilder.fromJson(map));
+            items.add(MediaItemBuilder.fromJson(map));
           } catch (_) {
             continue; // 1 item malformado não derruba a seção inteira
           }
@@ -360,7 +368,12 @@ class HomeScreenController extends GetxController {
       } catch (e) {
         printERROR("Ritmos do Mundo: falha ao buscar '$keyword': $e");
       }
+      return items;
     }
+
+    final resultsPerKeyword =
+        await Future.wait(_ritmosDoMundoKeywords.map(searchKeyword));
+    final collected = resultsPerKeyword.expand((list) => list).toList();
 
     if (collected.isEmpty) {
       isRitmosDoMundoLoading.value = false;
