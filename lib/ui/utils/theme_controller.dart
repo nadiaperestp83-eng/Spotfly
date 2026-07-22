@@ -30,6 +30,25 @@ const Color kAppleAccentColor = Color(0xFFFA233B);
 /// É o que dá aquela sensação de hierarquia/respiro do Apple Music.
 const Color kAppleGroupedBackground = Color(0xFFF2F2F7);
 
+/// Gradiente "verde → rosa/vermelho Apple Music" usado SÓ no ThemeType.dark,
+/// nos elementos que aceitam BoxDecoration/ShaderMask (pills de busca,
+/// ícone/label selecionado da bottom nav, indicador do Theme Mode).
+/// Componentes nativos do Material (Slider, ProgressIndicator, cursor de
+/// texto, indicador do NavigationRail/NavigationBar) só aceitam uma Color
+/// sólida — esses continuam usando kAccentColor puro.
+const LinearGradient kAccentGradient = LinearGradient(
+  colors: [kAccentColor, kAppleAccentColor],
+  begin: Alignment.centerLeft,
+  end: Alignment.centerRight,
+);
+
+/// Verifica, a partir do ColorScheme atual, se o tema ativo é exatamente o
+/// ThemeType.dark (e não o Dynamic, que também é Brightness.dark mas usa
+/// cores extraídas da capa do álbum). Só o Dark usa kAccentColor como
+/// `colorScheme.secondary`.
+bool isExactDarkTheme(BuildContext context) =>
+    Theme.of(context).colorScheme.secondary == kAccentColor;
+
 class ThemeController extends GetxController {
   final primaryColor = Colors.deepPurple[400].obs;
   final textColor = Colors.white24.obs;
