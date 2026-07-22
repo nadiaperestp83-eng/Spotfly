@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:harmonymusic/ui/screens/Home/home_screen_controller.dart';
 import 'package:harmonymusic/ui/utils/theme_controller.dart'
-    show kAccentColor, kAppleAccentColor;
+    show kAccentColor, kAppleAccentColor, kAccentGradient, isExactDarkTheme;
 
 /// Altura da pílula em si (sem margens/safe-area). Mantida em constante
 /// para reaproveitar em `ScrollToHideWidget` (home.dart), evitando números
@@ -86,6 +86,11 @@ class BottomNavBar extends StatelessWidget {
     final unselectedColor =
         isLightTheme ? Colors.black45 : Colors.white60;
 
+    // Só o ThemeType.dark ganha o gradiente verde→rosa Apple Music no item
+    // selecionado; o Dynamic (também Brightness.dark) mantém sua cor
+    // extraída da capa do álbum, sem gradiente.
+    final useGradient = isExactDarkTheme(context);
+
     // Vidro fosco: branco no tema light (não mais preto fixo), preto no
     // dark/dynamic — mesmo efeito de blur, só troca a base de cor.
     final glassColor = isLightTheme
@@ -136,26 +141,32 @@ class BottomNavBar extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                selected ? item.selectedIcon : item.icon,
-                                size: 22,
-                                color: selected
-                                    ? selectedColor
-                                    : unselectedColor,
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                modifyNgetlabel(item.labelKey.tr),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: selected
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
+                              _maybeGradient(
+                                selected && useGradient,
+                                Icon(
+                                  selected ? item.selectedIcon : item.icon,
+                                  size: 22,
                                   color: selected
                                       ? selectedColor
                                       : unselectedColor,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              _maybeGradient(
+                                selected && useGradient,
+                                Text(
+                                  modifyNgetlabel(item.labelKey.tr),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: selected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    color: selected
+                                        ? selectedColor
+                                        : unselectedColor,
+                                  ),
                                 ),
                               ),
                             ],
@@ -170,6 +181,19 @@ class BottomNavBar extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Aplica o gradiente verde→rosa Apple Music sobre um Icon/Text via
+  /// ShaderMask (BlendMode.srcIn usa só o alpha do child, então a cor
+  /// original do child não importa). Se [apply] for false, devolve o
+  /// child sem alteração.
+  static Widget _maybeGradient(bool apply, Widget child) {
+    if (!apply) return child;
+    return ShaderMask(
+      blendMode: BlendMode.srcIn,
+      shaderCallback: (bounds) => kAccentGradient.createShader(bounds),
+      child: child,
     );
   }
 
