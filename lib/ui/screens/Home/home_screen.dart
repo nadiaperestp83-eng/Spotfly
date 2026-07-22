@@ -17,6 +17,7 @@ import '../../widgets/shimmer_widgets/home_shimmer.dart';
 import '../../widgets/home/home_greeting_header.dart';
 import '../../widgets/home/recent_played_row.dart';
 import '../../widgets/home/audio_narrative_widget.dart';
+import '../../widgets/home/ritmos_do_mundo_widget.dart';
 import '../../widgets/home/popular_radio_stations_widget.dart';
 import '../../widgets/home/recommended_for_you_widget.dart';
 import '../../widgets/home/trending_songs_widget.dart';
@@ -231,17 +232,11 @@ class Body extends StatelessWidget {
                               content: homeScreenController.trendingSongs.value,
                               isLoading: homeScreenController
                                   .isTrendingSongsLoading.value)),
-                          Obx(() => AudioNarrativeWidget(
-                              sectionTitle: "reflectionMinutes".tr,
-                              items:
-                                  homeScreenController.reflectionMinutes.value,
+                          Obx(() => RitmosDoMundoWidget(
+                              sectionTitle: "ritmosDoMundo".tr,
+                              items: homeScreenController.ritmosDoMundo.value,
                               isLoading: homeScreenController
-                                  .isReflectionMinutesLoading.value,
-                              icon: Icons.self_improvement,
-                              gradientColors: const [
-                                Color(0xFF4E54C8),
-                                Color(0xFF8F94FB),
-                              ])),
+                                  .isRitmosDoMundoLoading.value)),
                           Obx(() => AudioNarrativeWidget(
                               sectionTitle: "nightTales".tr,
                               items: homeScreenController.nightTales.value,
