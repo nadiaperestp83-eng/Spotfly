@@ -29,7 +29,7 @@ A cross platform app for music streaming made with Flutter .
 * No Advertisment
 * No Login required
 * Piped playlist integration
-
+* itunes , listen notes, internet archive integration
 
 # Download
 * Pleass choose one source for android apk. you won't be able to update from cross build apk source.
@@ -44,6 +44,7 @@ A cross platform app for music streaming made with Flutter .
 
 
 # Troubleshoot
+*❌b Dark theme still under development* use the light theme 
 * if you are facing Notification control issue or music playback stopped by system optimization, please enable ignore battery optimization option from settings
 
 # License
