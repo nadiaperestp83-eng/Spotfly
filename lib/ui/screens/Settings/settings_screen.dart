@@ -31,8 +31,10 @@ class SettingsScreen extends StatelessWidget {
     final topPadding = context.isLandscape ? 50.0 : 90.0;
     final isDesktop = GetPlatform.isDesktop;
     return Container(
-      // Fundo da tela no padrão "Ajustes" do iOS.
-      color: const Color(0xFFF2F2F7),
+      // Fundo da tela: iOS claro (kAppleGroupedBackground) no ThemeType.light,
+      // e o fundo profundo do tema no Dark/Dynamic — antes ficava sempre
+      // fixo em claro, mesmo com o Dark selecionado.
+      color: Theme.of(context).scaffoldBackgroundColor,
       child: Padding(
         padding: isBottomNavActive
             ? EdgeInsets.only(left: 20, top: topPadding, right: 15)
@@ -50,7 +52,7 @@ class SettingsScreen extends StatelessWidget {
                   style: GoogleFonts.inter(
                     fontSize: 34,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                    color: Theme.of(context).textTheme.titleMedium?.color,
                   ),
                 ),
               ),
@@ -971,24 +973,79 @@ Widget radioWidget(
     {required String label,
     required SettingsScreenController controller,
     required value}) {
-  return Obx(() => ListTile(
-        visualDensity: const VisualDensity(vertical: -4),
-        onTap: () {
-          if (value.runtimeType == ThemeType) {
-            controller.onThemeChange(value);
-          } else {
-            controller.onContentChange(value);
-            Navigator.of(Get.context!).pop();
-          }
-        },
-        leading: Radio(
+  return Obx(() {
+    final groupValue = value.runtimeType == ThemeType
+        ? controller.themeModetype.value
+        : controller.discoverContentType.value;
+    final isSelected = groupValue == value;
+    return ListTile(
+      visualDensity: const VisualDensity(vertical: -4),
+      onTap: () {
+        if (value.runtimeType == ThemeType) {
+          controller.onThemeChange(value);
+        } else {
+          controller.onContentChange(value);
+          Navigator.of(Get.context!).pop();
+        }
+      },
+      // No ThemeType.dark, o ponto selecionado ganha o gradiente
+      // verde→rosa Apple Music em vez do verde sólido padrão do Radio;
+      // nos demais temas (e quando não selecionado) continua o Radio
+      // nativo de sempre, com o mesmo onChanged de antes.
+      leading: Builder(builder: (context) {
+        if (isSelected && isExactDarkTheme(context)) {
+          return const _GradientRadioDot();
+        }
+        return Radio(
             value: value,
-            groupValue: value.runtimeType == ThemeType
-                ? controller.themeModetype.value
-                : controller.discoverContentType.value,
+            groupValue: groupValue,
             onChanged: value.runtimeType == ThemeType
                 ? controller.onThemeChange
-                : controller.onContentChange),
-        title: Text(label),
-      ));
+                : controller.onContentChange);
+      }),
+      title: Text(label),
+    );
+  });
+}
+
+/// Réplica visual do "ponto" de um Radio selecionado (anel + centro
+/// preenchido), só que com o gradiente verde→rosa Apple Music em vez de
+/// uma cor sólida — Flutter não permite gradiente direto em Radio/Switch,
+/// então desenhamos o mesmo desenho com Containers circulares empilhados.
+class _GradientRadioDot extends StatelessWidget {
+  const _GradientRadioDot({this.size = 20});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+                shape: BoxShape.circle, gradient: kAccentGradient),
+          ),
+          Container(
+            width: size - 4,
+            height: size - 4,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              // Mesma cor de fundo do diálogo no Dark (kSurfaceElevated),
+              // criando o efeito de "anel" ao redor do centro.
+              color: Theme.of(context).dialogBackgroundColor,
+            ),
+          ),
+          Container(
+            width: (size - 4) * 0.5,
+            height: (size - 4) * 0.5,
+            decoration: const BoxDecoration(
+                shape: BoxShape.circle, gradient: kAccentGradient),
+          ),
+        ],
+      ),
+    );
+  }
 }
