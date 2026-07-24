@@ -1,3 +1,12 @@
+## 💖 Apoie este projeto
+
+Se este projeto foi útil para você e deseja apoiar o desenvolvimento contínuo, considere fazer uma doação:
+
+[![Doar com PayPal](https://img.shields.io/badge/Donate-PayPal-%2300457C?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/ncp/payment/4JVTRSHHZ682C)
+
+
+
+
 <div align="center">
 
 UNDER DEVELOPMENT!
