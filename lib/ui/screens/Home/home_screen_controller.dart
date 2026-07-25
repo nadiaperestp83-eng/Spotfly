@@ -110,13 +110,6 @@ class HomeScreenController extends GetxController {
     loadRecommendedForYou();
     loadPopularRadioStations();
     loadTrendingSongs();
-    // Ritmos do Mundo é YouTube direto (mesma "arquitetura" da seção Mais
-    // tocadas: MusicServices.search sem passar pelo Orquestrador/gate de
-    // narrativas), então dispara aqui, na hora que o app abre — não deve
-    // esperar isContentFetched nem o fallback de 15s da fila narrativa
-    // (isso é só pras seções de Internet Archive, que são mais lentas por
-    // natureza e por isso têm essa rede de segurança).
-    loadRitmosDoMundo();
 
     // IMPORTANTE: loadContent() NÃO pode ser usado como sinal de "Home
     // principal pronta" — dentro dele, loadContentFromNetwork() é
@@ -149,6 +142,7 @@ class HomeScreenController extends GetxController {
   /// entre si) — reduz ainda mais o pico de requisições simultâneas ao
   /// Internet Archive numa conexão móvel.
   Future<void> _loadNarrativeSectionsSequentially() async {
+    await loadRitmosDoMundo();
     await loadNightTales();
     await loadSoundPoetry();
   }
@@ -307,13 +301,29 @@ class HomeScreenController extends GetxController {
   }
 
   /// "Ritmos do Mundo": carrossel horizontal de músicas REAIS do YouTube
-  /// (mesmo motor de busca da seção "Mais tocadas"/da tela de busca —
-  /// MusicServices.search, que usa youtube_explode por baixo), buscando
-  /// por palavras-chave de estilos/culturas que não costumam aparecer
-  /// nos feeds "top hits" comuns. SUBSTITUI "Minutos de Reflexão" nessa
-  /// posição da Home — loadReflectionMinutes/reflectionMinutes acima
-  /// continuam definidos (não foram apagados), só não são mais chamados
-  /// em _loadNarrativeSectionsSequentially().
+  /// (mesmo motor de busca da tela de busca — MusicServices.search, que
+  /// usa youtube_explode por baixo), buscando por palavras-chave de
+  /// estilos/culturas que não costumam aparecer nos feeds "top hits"
+  /// comuns. SUBSTITUI "Minutos de Reflexão" nessa posição da Home —
+  /// loadReflectionMinutes/reflectionMinutes acima continuam definidos
+  /// (não foram apagados), só não são mais chamados em
+  /// _loadNarrativeSectionsSequentially().
+  ///
+  /// AVISO IMPORTANTE (histórico do bug): uma versão anterior desse
+  /// método disparava as 7 buscas em PARALELO e direto no onInit(),
+  /// "igual Mais tocadas". A diferença é que Mais tocadas passa pelo
+  /// Orquestrador (getCharts()), que já tem proteção própria contra
+  /// rajada de requisições; aqui chamamos MusicServices.search() (que
+  /// bate direto no youtube_explode) sem essa proteção. 7 chamadas
+  /// simultâneas TODA VEZ que o app abre é o tipo de padrão que o
+  /// YouTube reconhece como bot e passa a bloquear/atrasar por um
+  /// tempo — e como o app repetia isso a cada abertura, o bloqueio não
+  /// tinha chance de expirar, derrubando a reprodução em QUALQUER
+  /// música do app (Home, Search, Library), não só aqui. Por isso agora
+  /// essa seção: (1) roda 1 busca de cada vez, com uma pausa entre
+  /// elas; (2) só busca de novo 1x por dia (igual às seções de Internet
+  /// Archive); e (3) fica na fila de seções narrativas, sem competir
+  /// com o app abrindo.
   static const List<String> _ritmosDoMundoKeywords = [
     'música árabe',
     'música cigana',
@@ -327,12 +337,6 @@ class HomeScreenController extends GetxController {
   final ritmosDoMundo = <MediaItem>[].obs;
   final isRitmosDoMundoLoading = true.obs;
 
-  /// Dispara as buscas de todas as palavras-chave em PARALELO
-  /// (Future.wait) — mesma "arquitetura" da seção Mais tocadas: direto
-  /// no onInit(), sem fila/gate, aparecendo assim que o app abre. Junta
-  /// os resultados de todas num carrossel só. Mostra o cache local
-  /// primeiro (mesmo padrão de loadTrendingSongs), nunca sobrescreve com
-  /// lista vazia se a busca falhar.
   Future<void> loadRitmosDoMundo() async {
     final appPrefs = Hive.isBoxOpen("AppPrefs")
         ? Hive.box("AppPrefs")
@@ -348,10 +352,18 @@ class HomeScreenController extends GetxController {
       } catch (_) {}
     }
 
-    isRitmosDoMundoLoading.value = ritmosDoMundo.value.isEmpty;
+    final fetchedAtMillis = appPrefs.get("ritmosDoMundoFetchedAt") as int?;
+    if (ritmosDoMundo.value.isNotEmpty &&
+        fetchedAtMillis != null &&
+        _isSameLocalDay(fetchedAtMillis)) {
+      // Já buscamos com sucesso hoje: fica só no cache, sem bater no YouTube.
+      isRitmosDoMundoLoading.value = false;
+      return;
+    }
 
-    Future<List<MediaItem>> searchKeyword(String keyword) async {
-      final items = <MediaItem>[];
+    isRitmosDoMundoLoading.value = ritmosDoMundo.value.isEmpty;
+    final collected = <MediaItem>[];
+    for (final keyword in _ritmosDoMundoKeywords) {
       try {
         final result = await _musicServices.search(keyword, limit: 4);
         final songs = (result['Songs'] as List?) ?? [];
@@ -360,7 +372,7 @@ class HomeScreenController extends GetxController {
             final map = Map<String, dynamic>.from(raw as Map);
             final thumbs = map['thumbnails'] as List?;
             if (thumbs == null || thumbs.isEmpty) continue; // sem capa: pula
-            items.add(MediaItemBuilder.fromJson(map));
+            collected.add(MediaItemBuilder.fromJson(map));
           } catch (_) {
             continue; // 1 item malformado não derruba a seção inteira
           }
@@ -368,12 +380,9 @@ class HomeScreenController extends GetxController {
       } catch (e) {
         printERROR("Ritmos do Mundo: falha ao buscar '$keyword': $e");
       }
-      return items;
+      // Pausa entre cada busca — nunca dispara as 7 de uma vez.
+      await Future.delayed(const Duration(milliseconds: 800));
     }
-
-    final resultsPerKeyword =
-        await Future.wait(_ritmosDoMundoKeywords.map(searchKeyword));
-    final collected = resultsPerKeyword.expand((list) => list).toList();
 
     if (collected.isEmpty) {
       isRitmosDoMundoLoading.value = false;
@@ -383,6 +392,8 @@ class HomeScreenController extends GetxController {
     ritmosDoMundo.value = collected;
     await appPrefs.put("ritmosDoMundoCache",
         collected.map((e) => MediaItemBuilder.toJson(e)).toList());
+    await appPrefs.put(
+        "ritmosDoMundoFetchedAt", DateTime.now().millisecondsSinceEpoch);
     isRitmosDoMundoLoading.value = false;
   }
 
