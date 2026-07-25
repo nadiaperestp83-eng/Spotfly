@@ -141,10 +141,23 @@ class HomeScreenController extends GetxController {
   /// Carrega as 3 seções narrativas uma de cada vez (não em paralelo
   /// entre si) — reduz ainda mais o pico de requisições simultâneas ao
   /// Internet Archive numa conexão móvel.
+  /// As 3 seções rodam ao mesmo tempo ENTRE SI (Future.wait) — elas
+  /// batem em backends totalmente diferentes (Ritmos do Mundo ->
+  /// YouTube via MusicServices; Contos da Noite/Poesia Sonora ->
+  /// iTunes/Internet Archive via AudioContentService), então não há
+  /// risco de rajada cruzada entre elas. O cuidado que existia antes
+  /// (rodar 1 de cada vez) continua valendo DENTRO de
+  /// loadRitmosDoMundo() — lá sim as 7 buscas de palavra-chave são
+  /// sequenciais e com pausa, porque essas sim batem todas no mesmo
+  /// lugar (YouTube). Rodar as 3 seções em sequência aqui só fazia
+  /// Contos da Noite/Poesia Sonora esperarem Ritmos do Mundo terminar
+  /// primeiro (~10s+), sem necessidade nenhuma.
   Future<void> _loadNarrativeSectionsSequentially() async {
-    await loadRitmosDoMundo();
-    await loadNightTales();
-    await loadSoundPoetry();
+    await Future.wait([
+      loadRitmosDoMundo(),
+      loadNightTales(),
+      loadSoundPoetry(),
+    ]);
   }
 
   /// Monta a seção "Recommended for you" a partir do histórico local:
