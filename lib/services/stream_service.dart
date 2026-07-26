@@ -97,8 +97,20 @@ class StreamProvider {
     required Duration timeout,
   }) async {
     try {
+      // Igual ao exemplo do Musify (README do youtube_explode_dart):
+      // sem `ytClients`, a lib usa o client "web" por padrão, que é o
+      // mais visado pelo bloqueio/rate-limit do YouTube. Os clients
+      // móveis (ios/androidVr) tomam bem menos throttling — é
+      // literalmente a técnica que apps como Musify e yt-dlp usam pra
+      // contornar isso.
       final res = await yt.videos.streamsClient
-          .getManifest(videoId)
+          .getManifest(
+            videoId,
+            ytClients: const [
+              YoutubeApiClient.ios,
+              YoutubeApiClient.androidVr,
+            ],
+          )
           .timeout(timeout);
 
       final audio = res.audioOnly;
