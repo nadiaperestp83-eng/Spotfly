@@ -154,7 +154,15 @@ class HomeScreenController extends GetxController {
   /// primeiro (~10s+), sem necessidade nenhuma.
   Future<void> _loadNarrativeSectionsSequentially() async {
     await Future.wait([
-      loadRitmosDoMundo(),
+      // DESATIVADO TEMPORARIAMENTE: Ritmos do Mundo bate na MESMA API
+      // (MusicServices.search) que a tela de Search usa. Com Search
+      // agora devolvendo "No Match found" pra termos que antes davam
+      // resultado (ex: "El arbi"), suspeita forte de bloqueio/limite do
+      // YouTube — então até isso ser confirmado/resolvido, evitamos
+      // qualquer chamada extra nessa API. loadRitmosDoMundo() continua
+      // definido, só não é chamado aqui. Reative removendo o comentário
+      // da linha abaixo assim que o Search voltar a funcionar normal.
+      // loadRitmosDoMundo(),
       loadNightTales(),
       loadSoundPoetry(),
     ]);
