@@ -20,6 +20,12 @@ class ProxyConfig {
   /// legitimamente passar de 10s numa conexão móvel mais lenta.
   static const Duration directTimeout = Duration(seconds: 20);
 
+  /// Quantas vezes tenta a conexão direta (client novo a cada vez)
+  /// antes de desistir e mostrar erro pro usuário, quando NÃO há proxy
+  /// configurado. Só repete pra erros de rede/timeout — erros
+  /// definitivos (vídeo indisponível etc.) não repetem.
+  static const int directRetries = 2;
+
   /// true somente se [proxyAddress] foi de fato preenchido com um
   /// endereço real (não vazio e diferente do placeholder). Usado por
   /// YtClientProvider e por quem faz o fallback proxy->direto para
