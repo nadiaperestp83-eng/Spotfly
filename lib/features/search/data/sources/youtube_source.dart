@@ -48,7 +48,7 @@ class YoutubeSource implements IMusicSource {
     // client "web" padrão.
     final manifest = await _yt.videos.streamsClient.getManifest(
       track.sourceTrackId,
-      ytClients: const [
+      ytClients: [
         YoutubeApiClient.ios,
         YoutubeApiClient.androidVr,
       ],
