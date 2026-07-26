@@ -22,17 +22,34 @@ class StreamProvider {
   /// propaga erro pra UI se as duas tentativas falharem.
   ///
   /// Sem proxy configurado (ProxyConfig.isConfigured == false), pula
-  /// direto pra UMA ÚNICA tentativa direta com o timeout mais longo —
-  /// evita gastar 8s à toa numa "tentativa de proxy" que na prática já
-  /// é idêntica à tentativa direta que viria a seguir.
+  /// direto pra tentativa(s) diretas com o timeout mais longo — evita
+  /// gastar 8s à toa numa "tentativa de proxy" que na prática já é
+  /// idêntica à tentativa direta que viria a seguir.
   static Future<StreamProvider> fetchWithFallback(String videoId) async {
     if (!ProxyConfig.isConfigured) {
-      final directYt = YtClientProvider.createDefaultClient();
-      final directAttempt = await _tryFetch(
-        directYt,
-        videoId,
-        timeout: ProxyConfig.directTimeout,
+      // Antes: 1 tentativa só. Se desse timeout/erro de rede, a música
+      // já falhava na hora — sem chance de um "soluço" passageiro de
+      // rede se resolver sozinho. Agora tenta até
+      // [ProxyConfig.directRetries] vezes (client novo a cada
+      // tentativa) ANTES de desistir, só pra erros marcados como
+      // shouldFallback (rede/timeout/403) — erros definitivos (vídeo
+      // indisponível, exige compra etc.) continuam falhando na hora,
+      // sem repetir à toa.
+      _FetchAttempt directAttempt = _FetchAttempt.error(
+        StreamProvider(playable: false, statusMSG: "networkError"),
+        shouldFallback: true,
       );
+      for (var attempt = 1; attempt <= ProxyConfig.directRetries; attempt++) {
+        final directYt = YtClientProvider.createDefaultClient();
+        directAttempt = await _tryFetch(
+          directYt,
+          videoId,
+          timeout: ProxyConfig.directTimeout,
+        );
+        if (directAttempt.result != null || !directAttempt.shouldFallback) {
+          break; // sucesso, ou erro definitivo que não adianta repetir
+        }
+      }
       return directAttempt.result ??
           directAttempt.errorResult ??
           StreamProvider(playable: false, statusMSG: "networkError");
