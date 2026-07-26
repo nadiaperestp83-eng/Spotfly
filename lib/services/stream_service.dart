@@ -106,7 +106,7 @@ class StreamProvider {
       final res = await yt.videos.streamsClient
           .getManifest(
             videoId,
-            ytClients: const [
+            ytClients: [
               YoutubeApiClient.ios,
               YoutubeApiClient.androidVr,
             ],
