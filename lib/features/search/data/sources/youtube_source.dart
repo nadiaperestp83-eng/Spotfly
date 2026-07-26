@@ -43,8 +43,16 @@ class YoutubeSource implements IMusicSource {
 
   @override
   Future<String> resolveStreamUrl(Track track) async {
-    final manifest =
-        await _yt.videos.streamsClient.getManifest(track.sourceTrackId);
+    // Mesma técnica do stream_service.dart (exemplo do Musify): clients
+    // móveis tomam bem menos bloqueio/rate-limit do YouTube que o
+    // client "web" padrão.
+    final manifest = await _yt.videos.streamsClient.getManifest(
+      track.sourceTrackId,
+      ytClients: const [
+        YoutubeApiClient.ios,
+        YoutubeApiClient.androidVr,
+      ],
+    );
     final audio = manifest.audioOnly.withHighestBitrate();
     return audio.url.toString();
   }
