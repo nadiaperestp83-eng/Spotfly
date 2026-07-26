@@ -226,10 +226,10 @@ class SearchResultScreenController extends GetxController
 
     isResultContentFetced.value = true;
 
-    // Diálogo de debug desativado: já serviu para diagnosticar o problema
-    // de categorização. Se precisar depurar de novo, é só reativar a
-    // linha abaixo.
-    // _maybeShowDebugCategoriesDialog(rawKeys, normalizedMap, errorMessage);
+    // Diálogo de diagnóstico REATIVADO temporariamente: precisamos ver o
+    // erro real por trás de buscas que agora voltam "No Match found" pra
+    // termos que antes davam resultado (ex: "El arbi").
+    _maybeShowDebugCategoriesDialog(rawKeys, normalizedMap, errorMessage);
   }
 
   /// Debug UI: se a busca não gerou nenhuma aba, se Songs/Videos vieram
