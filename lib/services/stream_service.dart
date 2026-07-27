@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'yt_client_provider.dart';
 import 'proxy_config.dart';
+import 'free_proxy_service.dart';
 import 'package:harmonymusic/models/audio_model.dart';
 
 class StreamProvider {
@@ -16,16 +17,32 @@ class StreamProvider {
   /// quem já chama esse método, mas agora delega para o fallback automático.
   static Future<StreamProvider> fetch(String videoId) => fetchWithFallback(videoId);
 
-  /// Tenta buscar o manifesto via proxy (se houver um configurado); se
-  /// falhar por motivo de rede (SocketException, TimeoutException ou
-  /// HTTP 403), tenta de novo imediatamente com conexão direta. Só
-  /// propaga erro pra UI se as duas tentativas falharem.
-  ///
-  /// Sem proxy configurado (ProxyConfig.isConfigured == false), pula
-  /// direto pra tentativa(s) diretas com o timeout mais longo — evita
-  /// gastar 8s à toa numa "tentativa de proxy" que na prática já é
-  /// idêntica à tentativa direta que viria a seguir.
+  /// Ordem de tentativas (igual ao ProxyManager real do Musify:
+  /// `getSongManifest` tenta `_validateDirect` primeiro, proxy só entra
+  /// se o direto falhar):
+  /// 1) Conexão direta, timeout curto (5s) — cobre o caso comum (rede
+  ///    ok, sem bloqueio no momento), sem gastar tempo com proxy à toa.
+  /// 2) Se o direto falhar por motivo de rede, tenta alguns candidatos
+  ///    de uma lista pública e gratuita de proxies (ProxyScrape +
+  ///    Geonode), cada um com timeout curto.
+  /// 3) Se nenhum proxy funcionar (ou a lista vier vazia), cai pro
+  ///    fluxo que já estava funcionando antes: proxy fixo (se
+  ///    ProxyConfig.isConfigured) ou conexão direta com mais retries.
   static Future<StreamProvider> fetchWithFallback(String videoId) async {
+    final quickDirectYt = YtClientProvider.createDefaultClient();
+    final quickDirectAttempt = await _tryFetch(
+      quickDirectYt,
+      videoId,
+      timeout: _quickDirectTimeout,
+    );
+    if (quickDirectAttempt.result != null) return quickDirectAttempt.result!;
+    if (!quickDirectAttempt.shouldFallback) {
+      return quickDirectAttempt.errorResult!;
+    }
+
+    final freeProxyResult = await _tryFreeProxyList(videoId);
+    if (freeProxyResult != null) return freeProxyResult;
+
     if (!ProxyConfig.isConfigured) {
       // Antes: 1 tentativa só. Se desse timeout/erro de rede, a música
       // já falhava na hora — sem chance de um "soluço" passageiro de
@@ -88,6 +105,48 @@ class StreamProvider {
     // Falhou nas duas — devolve o erro da tentativa direta para a UI.
     return directAttempt.errorResult ??
         StreamProvider(playable: false, statusMSG: "networkError");
+  }
+
+  /// Timeout da tentativa direta rápida inicial — igual ao
+  /// `_validateDirectTimeout` do Musify (5s). Curto de propósito: se a
+  /// rede/YouTube estiver ok, a resposta normal chega bem antes disso;
+  /// se não chegar, não vale a pena esperar mais — já parte pro proxy.
+  static const Duration _quickDirectTimeout = Duration(seconds: 5);
+
+  /// Timeout curto por candidato — proxy público que não responde rápido
+  /// não vale a pena esperar, é melhor pular pro próximo/pro modo direto.
+  static const Duration _freeProxyPerAttemptTimeout = Duration(seconds: 6);
+
+  /// Tenta alguns candidatos da lista pública de proxies gratuitos.
+  /// Devolve `null` (não `StreamProvider`) se nenhum candidato existir
+  /// ou nenhum funcionar — nesse caso quem chamou segue pro fallback
+  /// já existente (proxy fixo / direto), sem essa tentativa ter
+  /// "gastado" o resultado de erro definitivo.
+  static Future<StreamProvider?> _tryFreeProxyList(String videoId) async {
+    final candidates = await FreeProxyService.getCandidates(maxCandidates: 3);
+    for (final proxyAddress in candidates) {
+      final proxyYt = YtClientProvider.createProxyClientFor(
+        proxyAddress,
+        timeout: _freeProxyPerAttemptTimeout,
+      );
+      final attempt = await _tryFetch(
+        proxyYt,
+        videoId,
+        timeout: _freeProxyPerAttemptTimeout,
+      );
+      if (attempt.result != null) {
+        return attempt.result;
+      }
+      if (!attempt.shouldFallback) {
+        // Erro definitivo (vídeo indisponível etc.) — não é culpa do
+        // proxy, não faz sentido tentar outro candidato nem o direto.
+        return attempt.errorResult;
+      }
+      // Erro de rede/timeout: marca esse candidato como morto por essa
+      // sessão e tenta o próximo da lista.
+      FreeProxyService.markDead(proxyAddress);
+    }
+    return null; // nenhum candidato disponível ou nenhum funcionou
   }
 
   /// Executa uma tentativa de busca do manifesto num client específico.
