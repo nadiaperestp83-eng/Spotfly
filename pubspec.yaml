@@ -64,10 +64,7 @@ dependencies:
   meta: ^1.15.0
   http: ^1.2.2
   webfeed_plus: ^1.0.1
-  youtube_explode_dart:
-    git:
-      url: https://github.com/gokadzev/Musify.git
-      path: packages/youtube_explode_dart
+  youtube_explode_dart: ^2.5.2
 
 
 
