@@ -23,22 +23,16 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      # 🚫 REMOVA ESTE BLOCO (Python e Chaquopy)
-      # - name: Configurar Python (para Chaquopy)
-      #   uses: actions/setup-python@v5
-      #   with:
-      #     python-version: '3.11'
-      # - name: Instalar dependências Python
-      #   run: |
-      #     python -m pip install --upgrade pip
-      #     pip install ytmusicapi yt-dlp
-
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.5'
           channel: 'stable'
           cache: true
+
+      # 🔄 FORÇA ATUALIZAÇÃO DO FORK DO GOKADZEV
+      - name: Limpar cache do pub (força download fresco do fork)
+        run: flutter pub cache clean
 
       - name: Instalar dependências
         run: flutter pub get
