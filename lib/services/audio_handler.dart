@@ -168,8 +168,27 @@ class MyAudioHandler extends BaseAudioHandler with GetxServiceMixin {
       if (e is PlayerException) {
         printERROR('Error code: ${e.code}');
         printERROR('Error message: ${e.message}');
+        // ===== DIAGNÓSTICO TEMPORÁRIO =====
+        // printERROR é no-op em release — sem isso você nunca veria
+        // esse erro real de playback. ME AVISE quando já tiver visto
+        // pra eu remover.
+        Get.snackbar(
+          'DEBUG: PlayerException',
+          'code=${e.code} | message=${e.message}',
+          duration: const Duration(seconds: 15),
+          isDismissible: true,
+        );
+        // ===== FIM DIAGNÓSTICO TEMPORÁRIO =====
       } else {
         printERROR('An error occurred: $e');
+        // ===== DIAGNÓSTICO TEMPORÁRIO =====
+        Get.snackbar(
+          'DEBUG: Erro no playback',
+          e.toString(),
+          duration: const Duration(seconds: 15),
+          isDismissible: true,
+        );
+        // ===== FIM DIAGNÓSTICO TEMPORÁRIO =====
         Duration curPos = _player.position;
         await _player.stop();
 
