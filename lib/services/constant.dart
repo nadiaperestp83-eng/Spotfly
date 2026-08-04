@@ -1,4 +1,15 @@
-const domain = "https://music.youtube.com/";
+// ATENÇÃO: usado como Referer/Origin nos headers de streaming em
+// audio_handler.dart (_createAudioSource). Precisa bater com o
+// contexto real usado pra extrair a URL do stream — hoje é o YouTube
+// "normal" via youtube_explode_dart (services/stream_service.dart),
+// NÃO mais o YouTube Music/WEB_REMIX de antes da migração. Mandar
+// "music.youtube.com" pro CDN (googlevideo.com) numa URL assinada
+// pelo contexto do YouTube normal é um descompasso clássico de
+// Referer/Origin que faz o CDN travar a conexão sem nunca responder
+// de verdade — a música toca metadados mas fica "carregando" pra
+// sempre. Se voltar a mudar a forma de extração do stream, atualize
+// aqui também.
+const domain = "https://www.youtube.com/";
 const String baseUrl = '${domain}youtubei/v1/';
 
 // Chave atualizada (o YouTube Music rotaciona, mas esta ainda é a padrão para web)
