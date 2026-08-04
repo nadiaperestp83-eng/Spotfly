@@ -91,7 +91,7 @@ class StreamProvider {
             // o client padrão pode devolver uma URL que trava sem
             // erro nenhum na hora de tocar (o sintoma que você viu:
             // "aparece mas fica carregando pra sempre").
-            ytClients: const [
+            ytClients: [
               YoutubeApiClient.ios,
               YoutubeApiClient.androidVr,
             ],
