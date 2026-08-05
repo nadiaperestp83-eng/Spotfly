@@ -14,7 +14,7 @@ UNDER DEVELOPMENT!
 # ❗**This is a hub app follow guidelines.**
 
 
-# Spotifly Music
+# Melodify Music
 A cross platform app for music streaming made with Flutter .
 
 # Features
@@ -58,7 +58,7 @@ A cross platform app for music streaming made with Flutter .
 
 # License
 ```
-Spotifly Music is a free software licensed under GPL v3.0 with following condition.
+Melodify Music is a free software licensed under GPL v3.0 with following condition.
 
 - Copied/Modified version of this software can not be used for 'non-free' and profit purposes.
 
